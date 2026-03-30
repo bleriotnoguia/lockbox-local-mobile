@@ -1,9 +1,19 @@
-import QuickCrypto from 'react-native-quick-crypto';
+import { gcm } from '@noble/ciphers/aes.js';
+import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { hmac } from '@noble/hashes/hmac.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
+import { getRandomBytes } from 'expo-crypto';
 
 const SALT_LENGTH = 16;
 const NONCE_LENGTH = 12;
 const KEY_LENGTH = 32;
 const PBKDF2_ITERATIONS = 100_000;
+
+// In-memory cache for derived keys to avoid repeated 100K-iteration PBKDF2
+// calls within a session. Key = masterHash + hex(salt), value = derived key.
+const _keyCache = new Map<string, Uint8Array>();
+const _KEY_CACHE_MAX = 64;
 
 /**
  * Derives a 256-bit AES key from a password string using PBKDF2-SHA256.
@@ -12,43 +22,50 @@ const PBKDF2_ITERATIONS = 100_000;
  * master password, NOT the raw user password. This matches the desktop
  * Rust implementation for cross-platform compatibility.
  */
-function deriveKey(password: string, salt: Buffer): Buffer {
-  return QuickCrypto.pbkdf2Sync(
-    password,
-    salt,
-    PBKDF2_ITERATIONS,
-    KEY_LENGTH,
-    'sha256'
-  );
+function deriveKey(password: string, salt: Uint8Array): Uint8Array {
+  const cacheKey = `${password}:${bytesToHex(salt)}`;
+  const cached = _keyCache.get(cacheKey);
+  if (cached) return cached;
+
+  const key = pbkdf2(sha256, password, salt, {
+    c: PBKDF2_ITERATIONS,
+    dkLen: KEY_LENGTH,
+  });
+
+  if (_keyCache.size >= _KEY_CACHE_MAX) {
+    _keyCache.delete(_keyCache.keys().next().value!);
+  }
+  _keyCache.set(cacheKey, key);
+  return key;
+}
+
+/** Clears the key cache (call on logout). */
+export function clearKeyCache() {
+  _keyCache.clear();
 }
 
 /**
  * Encrypts content using AES-256-GCM.
- * Returns base64(salt || nonce || ciphertext_with_auth_tag).
+ * Returns base64(salt || nonce || ciphertext || auth_tag).
  *
  * @param content - The plaintext string to encrypt
  * @param masterHash - The SHA-256 hex hash of the master password (NOT raw password)
  */
 export function encrypt(content: string, masterHash: string): string {
-  const salt = QuickCrypto.randomBytes(SALT_LENGTH);
-  const nonce = QuickCrypto.randomBytes(NONCE_LENGTH);
+  const salt = getRandomBytes(SALT_LENGTH);
+  const nonce = getRandomBytes(NONCE_LENGTH);
   const key = deriveKey(masterHash, salt);
 
-  const cipher = QuickCrypto.createCipheriv('aes-256-gcm', key, nonce);
-  const encrypted = Buffer.concat([
-    cipher.update(content, 'utf8'),
-    cipher.final(),
-  ]);
-  const authTag = cipher.getAuthTag();
+  const aes = gcm(key, nonce);
+  const plaintext = new TextEncoder().encode(content);
+  const ciphertextWithTag = aes.encrypt(plaintext);
 
-  const combined = Buffer.concat([
-    salt,
-    nonce,
-    encrypted,
-    authTag,
-  ]);
+  const combined = new Uint8Array(SALT_LENGTH + NONCE_LENGTH + ciphertextWithTag.length);
+  combined.set(salt, 0);
+  combined.set(nonce, SALT_LENGTH);
+  combined.set(ciphertextWithTag, SALT_LENGTH + NONCE_LENGTH);
 
-  return combined.toString('base64');
+  return uint8ToBase64(combined);
 }
 
 /**
@@ -58,41 +75,30 @@ export function encrypt(content: string, masterHash: string): string {
  * @param masterHash - The SHA-256 hex hash of the master password (NOT raw password)
  */
 export function decrypt(encrypted: string, masterHash: string): string {
-  const combined = Buffer.from(encrypted, 'base64');
+  const combined = base64ToUint8(encrypted);
 
   if (combined.length < SALT_LENGTH + NONCE_LENGTH + 16) {
     throw new Error('Invalid encrypted data format');
   }
 
-  const salt = combined.subarray(0, SALT_LENGTH);
-  const nonce = combined.subarray(SALT_LENGTH, SALT_LENGTH + NONCE_LENGTH);
-  const ciphertextWithTag = combined.subarray(SALT_LENGTH + NONCE_LENGTH);
-
-  // AES-GCM auth tag is the last 16 bytes
-  const authTag = ciphertextWithTag.subarray(ciphertextWithTag.length - 16);
-  const ciphertext = ciphertextWithTag.subarray(0, ciphertextWithTag.length - 16);
+  const salt = combined.slice(0, SALT_LENGTH);
+  const nonce = combined.slice(SALT_LENGTH, SALT_LENGTH + NONCE_LENGTH);
+  const ciphertextWithTag = combined.slice(SALT_LENGTH + NONCE_LENGTH);
 
   const key = deriveKey(masterHash, salt);
 
-  const decipher = QuickCrypto.createDecipheriv('aes-256-gcm', key, nonce);
-  decipher.setAuthTag(authTag);
+  const aes = gcm(key, nonce);
+  const plaintext = aes.decrypt(ciphertextWithTag);
 
-  const decrypted = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]);
-
-  return decrypted.toString('utf8');
+  return new TextDecoder().decode(plaintext);
 }
 
 /**
  * Hashes a password using SHA-256 and returns hex string.
- * Used for master password storage and panic code hashing.
  */
 export function hashPassword(password: string): string {
-  const hash = QuickCrypto.createHash('sha256');
-  hash.update(password);
-  return hash.digest('hex');
+  const encoded = new TextEncoder().encode(password);
+  return bytesToHex(sha256(encoded));
 }
 
 /**
@@ -104,12 +110,11 @@ export function verifyPassword(password: string, storedHash: string): boolean {
 
 /**
  * Signs data with HMAC-SHA256. Returns hex-encoded signature.
- * Key should be the master password hash (hex string).
  */
 export function hmacSign(data: string, key: string): string {
-  const hmac = QuickCrypto.createHmac('sha256', key);
-  hmac.update(data);
-  return hmac.digest('hex');
+  const keyBytes = new TextEncoder().encode(key);
+  const dataBytes = new TextEncoder().encode(data);
+  return bytesToHex(hmac(sha256, keyBytes, dataBytes));
 }
 
 /**
@@ -136,4 +141,21 @@ export function lockboxSignData(
   penaltySeconds: number
 ): string {
   return `${name}|${content}|${unlockDelaySeconds}|${relockDelaySeconds}|${penaltyEnabled ? '1' : '0'}|${penaltySeconds}`;
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }

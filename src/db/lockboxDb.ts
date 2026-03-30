@@ -327,35 +327,45 @@ export async function checkAndUpdateStates(): Promise<Lockbox[]> {
   const db = await getDatabase();
   const now = Date.now();
 
-  // 1. Complete countdown-based unlocks
-  await db.runAsync(
-    `UPDATE lockboxes
-     SET is_locked = 0,
-         relock_timestamp = ? + (relock_delay_seconds * 1000),
-         unlock_timestamp = NULL,
-         updated_at = ?
+  // 1. Complete countdown-based unlocks:
+  //    Find lockboxes whose unlock countdown has finished, compute each
+  //    relock_timestamp individually to avoid parameter-in-expression issues.
+  const pendingUnlocks = await db.getAllAsync<{ id: number; relock_delay_seconds: number }>(
+    `SELECT id, relock_delay_seconds FROM lockboxes
      WHERE is_locked = 1 AND unlock_timestamp IS NOT NULL AND unlock_timestamp <= ?`,
-    [now, now, now]
+    [now]
   );
+  for (const row of pendingUnlocks) {
+    const relockTs = now + row.relock_delay_seconds * 1000;
+    await db.runAsync(
+      `UPDATE lockboxes
+       SET is_locked = 0, relock_timestamp = ?, unlock_timestamp = NULL, updated_at = ?
+       WHERE id = ?`,
+      [relockTs, now, row.id]
+    );
+  }
 
   // 2. Complete scheduled unlocks
-  await db.runAsync(
-    `UPDATE lockboxes
-     SET is_locked = 0,
-         relock_timestamp = ? + (relock_delay_seconds * 1000),
-         scheduled_unlock_at = NULL,
-         updated_at = ?
+  const pendingScheduled = await db.getAllAsync<{ id: number; relock_delay_seconds: number }>(
+    `SELECT id, relock_delay_seconds FROM lockboxes
      WHERE is_locked = 1 AND scheduled_unlock_at IS NOT NULL AND scheduled_unlock_at <= ?
        AND unlock_timestamp IS NULL`,
-    [now, now, now]
+    [now]
   );
+  for (const row of pendingScheduled) {
+    const relockTs = now + row.relock_delay_seconds * 1000;
+    await db.runAsync(
+      `UPDATE lockboxes
+       SET is_locked = 0, relock_timestamp = ?, scheduled_unlock_at = NULL, updated_at = ?
+       WHERE id = ?`,
+      [relockTs, now, row.id]
+    );
+  }
 
   // 3. Auto-relock
   await db.runAsync(
     `UPDATE lockboxes
-     SET is_locked = 1,
-         relock_timestamp = NULL,
-         updated_at = ?
+     SET is_locked = 1, relock_timestamp = NULL, updated_at = ?
      WHERE is_locked = 0 AND relock_timestamp IS NOT NULL AND relock_timestamp <= ?`,
     [now, now]
   );

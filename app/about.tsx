@@ -6,13 +6,12 @@ import {
   ScrollView,
   Linking,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from '../src/i18n';
 
 export default function AboutScreen() {
   const { t } = useTranslation();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   return (
@@ -22,7 +21,13 @@ export default function AboutScreen() {
         className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700"
         style={{ paddingTop: insets.top + 8 }}
       >
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canDismiss()) router.dismiss();
+            else router.replace('/(tabs)/lockboxes');
+          }}
+          activeOpacity={0.7}
+        >
           <Text className="text-primary-600 dark:text-primary-400 text-base">
             {t('common.close')}
           </Text>

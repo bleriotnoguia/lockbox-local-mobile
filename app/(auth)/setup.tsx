@@ -8,6 +8,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useAuthStore } from '../../src/store';
 import { useTranslation } from '../../src/i18n';
 
@@ -35,6 +36,7 @@ export default function SetupScreen() {
     }
 
     await setMasterPassword(password);
+    router.replace('/(tabs)/lockboxes');
   };
 
   return (

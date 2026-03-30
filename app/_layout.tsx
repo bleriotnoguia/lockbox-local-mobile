@@ -3,14 +3,25 @@ import React, { useEffect, useRef } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, type AppStateStatus } from 'react-native';
+import { useColorScheme } from 'nativewind';
 import { useAuthStore, useLockboxStore, useThemeStore } from '../src/store';
 import { useNotifications, useScreenSecurity } from '../src/hooks';
 
 export default function RootLayout() {
-  const { isAuthenticated, isLoading, checkMasterPassword } = useAuthStore();
-  const { fetchLockboxes, checkAndUpdateStates, lockboxes } = useLockboxStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const checkMasterPassword = useAuthStore((s) => s.checkMasterPassword);
+  const fetchLockboxes = useLockboxStore((s) => s.fetchLockboxes);
+  const checkAndUpdateStates = useLockboxStore((s) => s.checkAndUpdateStates);
+  const lockboxes = useLockboxStore((s) => s.lockboxes);
+  const themeMode = useThemeStore((s) => s.theme);
   const effectiveTheme = useThemeStore((s) => s.getEffectiveTheme());
   const appState = useRef(AppState.currentState);
+
+  // Sync the theme store with NativeWind's color scheme so dark: classes match
+  const { setColorScheme } = useColorScheme();
+  useEffect(() => {
+    setColorScheme(themeMode === 'system' ? 'system' : themeMode);
+  }, [themeMode, setColorScheme]);
 
   useNotifications(isAuthenticated ? lockboxes : []);
   useScreenSecurity();
@@ -25,7 +36,6 @@ export default function RootLayout() {
     }
   }, [isAuthenticated, fetchLockboxes]);
 
-  // 1-second polling while authenticated
   useEffect(() => {
     if (!isAuthenticated) return;
     const interval = setInterval(() => {
@@ -34,7 +44,6 @@ export default function RootLayout() {
     return () => clearInterval(interval);
   }, [isAuthenticated, checkAndUpdateStates]);
 
-  // Run checkAndUpdateStates on app foreground
   useEffect(() => {
     const subscription = AppState.addEventListener(
       'change',
@@ -52,10 +61,6 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, [isAuthenticated, checkAndUpdateStates]);
 
-  if (isLoading) {
-    return null;
-  }
-
   return (
     <>
       <StatusBar style={effectiveTheme === 'dark' ? 'light' : 'dark'} />
@@ -67,34 +72,12 @@ export default function RootLayout() {
           },
         }}
       >
-        {!isAuthenticated ? (
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        ) : (
-          <>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="create"
-              options={{
-                presentation: 'modal',
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen
-              name="settings"
-              options={{
-                presentation: 'modal',
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen
-              name="about"
-              options={{
-                presentation: 'modal',
-                headerShown: false,
-              }}
-            />
-          </>
-        )}
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="create" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="about" options={{ presentation: 'modal' }} />
       </Stack>
     </>
   );

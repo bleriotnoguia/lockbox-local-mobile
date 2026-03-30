@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
-import { hashPassword, verifyPassword } from '../crypto';
+import { hashPassword, verifyPassword, clearKeyCache } from '../crypto';
 
 const MASTER_HASH_KEY = 'lockbox_master_hash';
 
@@ -82,6 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
+    clearKeyCache();
     set({
       isAuthenticated: false,
       masterHash: null,

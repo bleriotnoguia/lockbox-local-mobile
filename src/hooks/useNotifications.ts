@@ -1,27 +1,47 @@
 import { useEffect, useRef } from 'react';
-import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import type { Lockbox } from '../types';
 import { getLockboxStatus } from './useLockboxStatus';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// expo-notifications is not supported in Expo Go (removed in SDK 53).
+// Only load the module when running in a real build.
+const isExpoGo = Constants.appOwnership === 'expo';
+
+type NotificationsModule = typeof import('expo-notifications');
+let Notifications: NotificationsModule | null = null;
+
+if (!isExpoGo) {
+  try {
+    Notifications = require('expo-notifications') as NotificationsModule;
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  } catch {
+    Notifications = null;
+  }
+}
 
 async function requestPermissions() {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('lockbox-unlock', {
-      name: 'Lockbox Unlocks',
-      importance: Notifications.AndroidImportance.HIGH,
-    });
+  if (!Notifications) return false;
+  try {
+    const { Platform } = require('react-native');
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('lockbox-unlock', {
+        name: 'Lockbox Unlocks',
+        importance: Notifications.AndroidImportance.HIGH,
+      });
+    }
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status === 'granted';
+  } catch {
+    return false;
   }
-
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted';
 }
 
 export function useNotifications(lockboxes: Lockbox[]) {
@@ -32,6 +52,8 @@ export function useNotifications(lockboxes: Lockbox[]) {
   }, []);
 
   useEffect(() => {
+    if (!Notifications) return;
+
     for (const lockbox of lockboxes) {
       const status = getLockboxStatus(lockbox);
 
@@ -50,9 +72,7 @@ export function useNotifications(lockboxes: Lockbox[]) {
                 type: Notifications.SchedulableTriggerInputTypes.DATE,
                 date: triggerDate,
               },
-            }).catch(() => {
-              // notification scheduling can fail silently
-            });
+            }).catch(() => {});
           }
         }
       }

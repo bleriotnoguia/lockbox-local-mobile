@@ -6,4 +6,5 @@ export {
   hmacSign,
   hmacVerify,
   lockboxSignData,
+  clearKeyCache,
 } from './crypto';

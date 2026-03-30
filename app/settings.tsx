@@ -9,7 +9,7 @@ import {
   TextInput,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -21,7 +21,6 @@ const BIOMETRIC_ENABLED_KEY = 'lockbox_biometric_enabled';
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const logout = useAuthStore((s) => s.logout);
   const { theme, setTheme } = useThemeStore();
@@ -112,7 +111,13 @@ export default function SettingsScreen() {
         className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700"
         style={{ paddingTop: insets.top + 8 }}
       >
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canDismiss()) router.dismiss();
+            else router.replace('/(tabs)/lockboxes');
+          }}
+          activeOpacity={0.7}
+        >
           <Text className="text-primary-600 dark:text-primary-400 text-base">
             {t('common.close')}
           </Text>
@@ -241,14 +246,8 @@ export default function SettingsScreen() {
         <TouchableOpacity
           className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 items-center"
           onPress={() => {
-            Alert.alert(t('settings.logout'), '', [
-              { text: t('common.cancel'), style: 'cancel' },
-              {
-                text: t('settings.logout'),
-                style: 'destructive',
-                onPress: logout,
-              },
-            ]);
+            logout();
+            router.replace('/');
           }}
           activeOpacity={0.7}
         >

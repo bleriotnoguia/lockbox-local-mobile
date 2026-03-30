@@ -89,9 +89,14 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
       return;
     }
     setIsDecrypting(true);
-    const result = await fetchLockboxDecrypted(lockbox.id);
-    setDecryptedContent(result?.content ?? null);
-    setIsDecrypting(false);
+    try {
+      const result = await fetchLockboxDecrypted(lockbox.id);
+      setDecryptedContent(result?.content ?? null);
+    } catch {
+      setDecryptedContent(null);
+    } finally {
+      setIsDecrypting(false);
+    }
   }, [status, lockbox.id, fetchLockboxDecrypted]);
 
   useEffect(() => {
@@ -242,7 +247,16 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
         showsVerticalScrollIndicator={false}
       >
         {/* Status + Countdown */}
-        <View className="bg-white dark:bg-gray-800 rounded-2xl p-5 mb-4">
+        <View
+          className="bg-white dark:bg-gray-800 rounded-2xl p-5 mb-4"
+          style={{
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.06,
+            shadowRadius: 4,
+            elevation: 2,
+          }}
+        >
           <View className="flex-row items-center mb-3">
             <View
               className="w-3 h-3 rounded-full mr-2"
@@ -310,7 +324,16 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
 
         {/* Content (when unlocked) */}
         {status === 'unlocked' && (
-          <View className="bg-white dark:bg-gray-800 rounded-2xl p-5 mb-4">
+          <View
+            className="bg-white dark:bg-gray-800 rounded-2xl p-5 mb-4"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.06,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+          >
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                 {t('lockboxDetail.content')}
@@ -414,6 +437,13 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
           className="bg-white dark:bg-gray-800 rounded-2xl p-4 mb-4"
           onPress={() => setShowAdvanced(!showAdvanced)}
           activeOpacity={0.8}
+          style={{
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.06,
+            shadowRadius: 4,
+            elevation: 2,
+          }}
         >
           <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             {showAdvanced ? '▼' : '▶'} {t('createLockbox.advancedOptions')}
@@ -421,7 +451,16 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
         </TouchableOpacity>
 
         {showAdvanced && (
-          <View className="bg-white dark:bg-gray-800 rounded-2xl p-5 mb-4 gap-4">
+          <View
+            className="bg-white dark:bg-gray-800 rounded-2xl p-5 mb-4 gap-4"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.06,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+          >
             {/* Panic Code */}
             {lockbox.panic_code_hash && (
               <View>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -9,51 +9,54 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useLockboxStore } from '../src/store';
-import { useTranslation } from '../src/i18n';
-import { CATEGORIES, DELAY_PRESETS } from '../src/constants';
-import { serializeTags } from '../src/types';
+} from "react-native";
+import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { useLockboxStore } from "../src/store";
+import { useTranslation } from "../src/i18n";
+import { CATEGORIES, DELAY_PRESETS } from "../src/constants";
+import { serializeTags } from "../src/types";
 
-type TimeUnit = 'seconds' | 'minutes' | 'hours' | 'days';
+type TimeUnit = "seconds" | "minutes" | "hours" | "days";
 
 function delayToSeconds(value: number, unit: TimeUnit): number {
   switch (unit) {
-    case 'seconds': return value;
-    case 'minutes': return value * 60;
-    case 'hours': return value * 3600;
-    case 'days': return value * 86400;
+    case "seconds":
+      return value;
+    case "minutes":
+      return value * 60;
+    case "hours":
+      return value * 3600;
+    case "days":
+      return value * 86400;
   }
 }
 
 export default function CreateScreen() {
   const { t } = useTranslation();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const createLockbox = useLockboxStore((s) => s.createLockbox);
 
-  const [name, setName] = useState('');
-  const [content, setContent] = useState('');
+  const [name, setName] = useState("");
+  const [content, setContent] = useState("");
   const [category, setCategory] = useState<string | undefined>();
   const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState('');
+  const [tagInput, setTagInput] = useState("");
 
-  const [unlockValue, setUnlockValue] = useState('60');
-  const [unlockUnit, setUnlockUnit] = useState<TimeUnit>('minutes');
-  const [relockValue, setRelockValue] = useState('24');
-  const [relockUnit, setRelockUnit] = useState<TimeUnit>('hours');
+  const [unlockValue, setUnlockValue] = useState("60");
+  const [unlockUnit, setUnlockUnit] = useState<TimeUnit>("minutes");
+  const [relockValue, setRelockValue] = useState("24");
+  const [relockUnit, setRelockUnit] = useState<TimeUnit>("hours");
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [reflectionEnabled, setReflectionEnabled] = useState(false);
-  const [reflectionMessage, setReflectionMessage] = useState('');
-  const [reflectionChecklist, setReflectionChecklist] = useState('');
+  const [reflectionMessage, setReflectionMessage] = useState("");
+  const [reflectionChecklist, setReflectionChecklist] = useState("");
   const [penaltyEnabled, setPenaltyEnabled] = useState(false);
-  const [penaltyValue, setPenaltyValue] = useState('30');
-  const [penaltyUnit, setPenaltyUnit] = useState<TimeUnit>('minutes');
-  const [panicCode, setPanicCode] = useState('');
+  const [penaltyValue, setPenaltyValue] = useState("30");
+  const [penaltyUnit, setPenaltyUnit] = useState<TimeUnit>("minutes");
+  const [panicCode, setPanicCode] = useState("");
   const [scheduledEnabled, setScheduledEnabled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -64,7 +67,7 @@ export default function CreateScreen() {
     if (trimmed && !tags.includes(trimmed)) {
       setTags([...tags, trimmed]);
     }
-    setTagInput('');
+    setTagInput("");
   };
 
   const handleRemoveTag = (tag: string) => {
@@ -73,11 +76,11 @@ export default function CreateScreen() {
 
   const handleCreate = async () => {
     if (!name.trim()) {
-      Alert.alert('', t('createLockbox.nameRequired'));
+      Alert.alert("", t("createLockbox.nameRequired"));
       return;
     }
     if (!content.trim()) {
-      Alert.alert('', t('createLockbox.contentRequired'));
+      Alert.alert("", t("createLockbox.contentRequired"));
       return;
     }
 
@@ -89,11 +92,11 @@ export default function CreateScreen() {
         category,
         unlock_delay_seconds: delayToSeconds(
           Number(unlockValue) || 60,
-          unlockUnit
+          unlockUnit,
         ),
         relock_delay_seconds: delayToSeconds(
           Number(relockValue) || 24,
-          relockUnit
+          relockUnit,
         ),
         reflection_enabled: reflectionEnabled,
         reflection_message: reflectionMessage.trim() || undefined,
@@ -109,9 +112,10 @@ export default function CreateScreen() {
         tags: serializeTags(tags),
       });
 
-      router.back();
-    } catch {
-      Alert.alert('', t('createLockbox.createError'));
+      if (router.canDismiss()) router.dismiss();
+      else router.replace('/(tabs)/lockboxes');
+    } catch (e) {
+      Alert.alert("Error", String(e));
     } finally {
       setIsSubmitting(false);
     }
@@ -119,7 +123,7 @@ export default function CreateScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1 bg-gray-50 dark:bg-gray-900"
     >
       {/* Header */}
@@ -127,13 +131,19 @@ export default function CreateScreen() {
         className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700"
         style={{ paddingTop: insets.top + 8 }}
       >
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canDismiss()) router.dismiss();
+            else router.replace('/(tabs)/lockboxes');
+          }}
+          activeOpacity={0.7}
+        >
           <Text className="text-primary-600 dark:text-primary-400 text-base">
-            {t('createLockbox.cancel')}
+            {t("createLockbox.cancel")}
           </Text>
         </TouchableOpacity>
         <Text className="text-lg font-bold text-gray-900 dark:text-white">
-          {t('createLockbox.title')}
+          {t("createLockbox.title")}
         </Text>
         <TouchableOpacity
           onPress={handleCreate}
@@ -143,11 +153,11 @@ export default function CreateScreen() {
           <Text
             className={`text-base font-semibold ${
               isSubmitting
-                ? 'text-gray-400'
-                : 'text-primary-600 dark:text-primary-400'
+                ? "text-gray-400"
+                : "text-primary-600 dark:text-primary-400"
             }`}
           >
-            {t('createLockbox.create')}
+            {t("createLockbox.create")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -161,11 +171,11 @@ export default function CreateScreen() {
         {/* Name */}
         <View className="mb-4">
           <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            {t('createLockbox.name')}
+            {t("createLockbox.name")}
           </Text>
           <TextInput
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-base text-gray-900 dark:text-white"
-            placeholder={t('createLockbox.namePlaceholder')}
+            placeholder={t("createLockbox.namePlaceholder")}
             placeholderTextColor="#9ca3af"
             value={name}
             onChangeText={setName}
@@ -175,11 +185,11 @@ export default function CreateScreen() {
         {/* Content */}
         <View className="mb-4">
           <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            {t('createLockbox.content')}
+            {t("createLockbox.content")}
           </Text>
           <TextInput
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-base text-gray-900 dark:text-white min-h-[100px]"
-            placeholder={t('createLockbox.contentPlaceholder')}
+            placeholder={t("createLockbox.contentPlaceholder")}
             placeholderTextColor="#9ca3af"
             value={content}
             onChangeText={setContent}
@@ -192,7 +202,7 @@ export default function CreateScreen() {
         {/* Category */}
         <View className="mb-4">
           <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            {t('createLockbox.category')}
+            {t("createLockbox.category")}
           </Text>
           <ScrollView
             horizontal
@@ -202,18 +212,18 @@ export default function CreateScreen() {
             <TouchableOpacity
               className={`px-3 py-2 rounded-lg ${
                 !category
-                  ? 'bg-primary-600'
-                  : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
+                  ? "bg-primary-600"
+                  : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
               }`}
               onPress={() => setCategory(undefined)}
               activeOpacity={0.7}
             >
               <Text
                 className={`text-xs ${
-                  !category ? 'text-white' : 'text-gray-600 dark:text-gray-400'
+                  !category ? "text-white" : "text-gray-600 dark:text-gray-400"
                 }`}
               >
-                {t('createLockbox.noCategory')}
+                {t("createLockbox.noCategory")}
               </Text>
             </TouchableOpacity>
             {CATEGORIES.map((c) => (
@@ -221,8 +231,8 @@ export default function CreateScreen() {
                 key={c}
                 className={`px-3 py-2 rounded-lg ${
                   category === c
-                    ? 'bg-primary-600'
-                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
+                    ? "bg-primary-600"
+                    : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
                 }`}
                 onPress={() => setCategory(c)}
                 activeOpacity={0.7}
@@ -230,8 +240,8 @@ export default function CreateScreen() {
                 <Text
                   className={`text-xs ${
                     category === c
-                      ? 'text-white'
-                      : 'text-gray-600 dark:text-gray-400'
+                      ? "text-white"
+                      : "text-gray-600 dark:text-gray-400"
                   }`}
                 >
                   {t(`category.${c}`) || c}
@@ -244,7 +254,7 @@ export default function CreateScreen() {
         {/* Tags */}
         <View className="mb-4">
           <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            {t('tags.label')}
+            {t("tags.label")}
           </Text>
           <View className="flex-row flex-wrap gap-1.5 mb-2">
             {tags.map((tag) => (
@@ -262,12 +272,12 @@ export default function CreateScreen() {
           </View>
           <TextInput
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white"
-            placeholder={t('tags.placeholder')}
+            placeholder={t("tags.placeholder")}
             placeholderTextColor="#9ca3af"
             value={tagInput}
             onChangeText={(text) => {
-              if (text.endsWith(',') || text.endsWith(' ')) {
-                setTagInput('');
+              if (text.endsWith(",") || text.endsWith(" ")) {
+                setTagInput("");
                 const trimmed = text.slice(0, -1).trim();
                 if (trimmed && !tags.includes(trimmed)) {
                   setTags([...tags, trimmed]);
@@ -283,8 +293,8 @@ export default function CreateScreen() {
 
         {/* Unlock Delay */}
         <DelayPicker
-          label={t('createLockbox.unlockDelay')}
-          hint={t('createLockbox.unlockDelayHint')}
+          label={t("createLockbox.unlockDelay")}
+          hint={t("createLockbox.unlockDelayHint")}
           value={unlockValue}
           unit={unlockUnit}
           onValueChange={setUnlockValue}
@@ -293,8 +303,8 @@ export default function CreateScreen() {
 
         {/* Relock Delay */}
         <DelayPicker
-          label={t('createLockbox.relockDelay')}
-          hint={t('createLockbox.relockDelayHint')}
+          label={t("createLockbox.relockDelay")}
+          hint={t("createLockbox.relockDelayHint")}
           value={relockValue}
           unit={relockUnit}
           onValueChange={setRelockValue}
@@ -308,7 +318,7 @@ export default function CreateScreen() {
           activeOpacity={0.8}
         >
           <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            {showAdvanced ? '▼' : '▶'} {t('createLockbox.advancedOptions')}
+            {showAdvanced ? "▼" : "▶"} {t("createLockbox.advancedOptions")}
           </Text>
         </TouchableOpacity>
 
@@ -319,30 +329,34 @@ export default function CreateScreen() {
               <View className="flex-row items-center justify-between mb-2">
                 <View className="flex-1 mr-3">
                   <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    {t('createLockbox.reflectionSection')}
+                    {t("createLockbox.reflectionSection")}
                   </Text>
                   <Text className="text-xs text-gray-500 mt-0.5">
-                    {t('createLockbox.reflectionSectionHint')}
+                    {t("createLockbox.reflectionSectionHint")}
                   </Text>
                 </View>
                 <Switch
                   value={reflectionEnabled}
                   onValueChange={setReflectionEnabled}
-                  trackColor={{ true: '#6366f1' }}
+                  trackColor={{ true: "#6366f1" }}
                 />
               </View>
               {reflectionEnabled && (
                 <View className="mt-3 gap-3">
                   <TextInput
                     className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white"
-                    placeholder={t('createLockbox.reflectionMessagePlaceholder')}
+                    placeholder={t(
+                      "createLockbox.reflectionMessagePlaceholder",
+                    )}
                     placeholderTextColor="#9ca3af"
                     value={reflectionMessage}
                     onChangeText={setReflectionMessage}
                   />
                   <TextInput
                     className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white min-h-[80px]"
-                    placeholder={t('createLockbox.reflectionChecklistPlaceholder')}
+                    placeholder={t(
+                      "createLockbox.reflectionChecklistPlaceholder",
+                    )}
                     placeholderTextColor="#9ca3af"
                     value={reflectionChecklist}
                     onChangeText={setReflectionChecklist}
@@ -358,23 +372,23 @@ export default function CreateScreen() {
               <View className="flex-row items-center justify-between mb-2">
                 <View className="flex-1 mr-3">
                   <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    {t('createLockbox.penaltySection')}
+                    {t("createLockbox.penaltySection")}
                   </Text>
                   <Text className="text-xs text-gray-500 mt-0.5">
-                    {t('createLockbox.penaltySectionHint')}
+                    {t("createLockbox.penaltySectionHint")}
                   </Text>
                 </View>
                 <Switch
                   value={penaltyEnabled}
                   onValueChange={setPenaltyEnabled}
-                  trackColor={{ true: '#6366f1' }}
+                  trackColor={{ true: "#6366f1" }}
                 />
               </View>
               {penaltyEnabled && (
                 <View className="mt-3">
                   <DelayPicker
-                    label={t('createLockbox.penaltyDelay')}
-                    hint={t('createLockbox.penaltyDelayHint')}
+                    label={t("createLockbox.penaltyDelay")}
+                    hint={t("createLockbox.penaltyDelayHint")}
                     value={penaltyValue}
                     unit={penaltyUnit}
                     onValueChange={setPenaltyValue}
@@ -387,14 +401,14 @@ export default function CreateScreen() {
             {/* Panic Code */}
             <View className="bg-white dark:bg-gray-800 rounded-xl p-4">
               <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                {t('createLockbox.panicSection')}
+                {t("createLockbox.panicSection")}
               </Text>
               <Text className="text-xs text-gray-500 mb-3">
-                {t('createLockbox.panicSectionHint')}
+                {t("createLockbox.panicSectionHint")}
               </Text>
               <TextInput
                 className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white"
-                placeholder={t('createLockbox.panicCodePlaceholder')}
+                placeholder={t("createLockbox.panicCodePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={panicCode}
                 onChangeText={setPanicCode}
@@ -407,16 +421,16 @@ export default function CreateScreen() {
               <View className="flex-row items-center justify-between mb-2">
                 <View className="flex-1 mr-3">
                   <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    {t('createLockbox.scheduledSection')}
+                    {t("createLockbox.scheduledSection")}
                   </Text>
                   <Text className="text-xs text-gray-500 mt-0.5">
-                    {t('createLockbox.scheduledSectionHint')}
+                    {t("createLockbox.scheduledSectionHint")}
                   </Text>
                 </View>
                 <Switch
                   value={scheduledEnabled}
                   onValueChange={setScheduledEnabled}
-                  trackColor={{ true: '#6366f1' }}
+                  trackColor={{ true: "#6366f1" }}
                 />
               </View>
               {scheduledEnabled && (
@@ -436,7 +450,7 @@ export default function CreateScreen() {
                       mode="datetime"
                       minimumDate={new Date()}
                       onChange={(_, date) => {
-                        setShowDatePicker(Platform.OS === 'ios');
+                        setShowDatePicker(Platform.OS === "ios");
                         if (date) setScheduledDate(date);
                       }}
                     />
@@ -467,7 +481,7 @@ function DelayPicker({
   onUnitChange: (u: TimeUnit) => void;
 }) {
   const { t } = useTranslation();
-  const units: TimeUnit[] = ['seconds', 'minutes', 'hours', 'days'];
+  const units: TimeUnit[] = ["seconds", "minutes", "hours", "days"];
 
   return (
     <View className="mb-4">
@@ -490,17 +504,15 @@ function DelayPicker({
               key={u}
               className={`flex-1 py-3 rounded-xl items-center ${
                 unit === u
-                  ? 'bg-primary-600'
-                  : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
+                  ? "bg-primary-600"
+                  : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
               }`}
               onPress={() => onUnitChange(u)}
               activeOpacity={0.7}
             >
               <Text
                 className={`text-[10px] font-medium ${
-                  unit === u
-                    ? 'text-white'
-                    : 'text-gray-600 dark:text-gray-400'
+                  unit === u ? "text-white" : "text-gray-600 dark:text-gray-400"
                 }`}
               >
                 {t(`timeUnits.${u}`)}

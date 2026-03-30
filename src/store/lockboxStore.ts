@@ -346,8 +346,8 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
           ? lockboxes.find((lb) => lb.id === selectedLockbox.id) ?? null
           : null,
       });
-    } catch {
-      // silently fail on background polling
+    } catch (e) {
+      console.warn('[checkAndUpdateStates]', e);
     }
   },
 

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { useAuthStore } from '../store/authStore';
@@ -57,13 +57,10 @@ export function useExportImport() {
 
     const jsonString = JSON.stringify(exportData, null, 2);
     const filename = `lockbox-export-${Date.now()}.json`;
-    const filePath = `${FileSystem.cacheDirectory}${filename}`;
+    const file = new File(Paths.cache, filename);
+    file.write(jsonString);
 
-    await FileSystem.writeAsStringAsync(filePath, jsonString, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-
-    await Sharing.shareAsync(filePath, {
+    await Sharing.shareAsync(file.uri, {
       mimeType: 'application/json',
       dialogTitle: 'Export Lockboxes',
     });
@@ -83,9 +80,7 @@ export function useExportImport() {
       }
 
       const fileUri = result.assets[0].uri;
-      const content = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      const content = await new File(fileUri).text();
 
       const exportData: ExportData = JSON.parse(content);
 

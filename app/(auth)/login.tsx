@@ -8,6 +8,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { router } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../../src/store';
@@ -51,6 +52,7 @@ export default function LoginScreen() {
             isAuthenticated: true,
             masterHash: storedHash,
           });
+          router.replace('/(tabs)/lockboxes');
         }
       }
     } catch {
@@ -61,7 +63,10 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     clearError();
     if (!password) return;
-    await verifyMasterPassword(password);
+    const success = await verifyMasterPassword(password);
+    if (success) {
+      router.replace('/(tabs)/lockboxes');
+    }
   };
 
   return (
