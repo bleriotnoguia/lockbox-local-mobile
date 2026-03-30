@@ -20,6 +20,8 @@ import {
   formatTimeRemaining,
 } from '../../../src/hooks';
 import { useTranslation } from '../../../src/i18n';
+import { ReflectionModal } from '../../../src/components/ReflectionModal';
+import { ExtendDelayModal } from '../../../src/components/ExtendDelayModal';
 import type { Lockbox, AccessLogEntry } from '../../../src/types';
 
 export default function LockboxDetailScreen() {
@@ -66,6 +68,8 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
   const [panicInput, setPanicInput] = useState('');
   const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showReflection, setShowReflection] = useState(false);
+  const [showExtendDelay, setShowExtendDelay] = useState(false);
 
   const countdownTimestamp =
     status === 'unlocking'
@@ -102,7 +106,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
 
   const handleUnlock = () => {
     if (lockbox.reflection_enabled) {
-      router.push(`/create?reflectionFor=${lockbox.id}`);
+      setShowReflection(true);
       return;
     }
 
@@ -382,11 +386,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
               </TouchableOpacity>
               <TouchableOpacity
                 className="bg-gray-200 dark:bg-gray-700 rounded-xl py-4 items-center"
-                onPress={() =>
-                  router.push(
-                    `/create?extendFor=${lockbox.id}` as never
-                  )
-                }
+                onPress={() => setShowExtendDelay(true)}
                 activeOpacity={0.7}
               >
                 <Text className="text-gray-700 dark:text-gray-300 font-semibold text-base">
@@ -497,6 +497,31 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
           </View>
         )}
       </ScrollView>
+
+      {/* Reflection Modal */}
+      <ReflectionModal
+        visible={showReflection}
+        message={lockbox.reflection_message}
+        checklist={lockbox.reflection_checklist}
+        onConfirm={async () => {
+          setShowReflection(false);
+          await unlockLockbox(lockbox.id);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }}
+        onCancel={() => setShowReflection(false)}
+      />
+
+      {/* Extend Delay Modal */}
+      <ExtendDelayModal
+        visible={showExtendDelay}
+        currentDelaySeconds={lockbox.unlock_delay_seconds}
+        onConfirm={async (additionalSeconds) => {
+          setShowExtendDelay(false);
+          await useLockboxStore.getState().extendUnlockDelay(lockbox.id, additionalSeconds);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }}
+        onCancel={() => setShowExtendDelay(false)}
+      />
     </View>
   );
 }
