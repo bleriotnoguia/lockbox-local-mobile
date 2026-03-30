@@ -6,17 +6,12 @@ on:
       - 'v*.*.*'
 
 jobs:
-  release:
-    name: Create GitHub Release
+  build-android:
+    name: Build Android APK
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -27,6 +22,82 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build Android APK with EAS
+        run: |
+          BUILD_RESULT=$(eas build --platform android --profile preview \
+            --non-interactive --wait --json 2>/dev/null)
+          BUILD_URL=$(echo "$BUILD_RESULT" | jq -r '.artifacts.buildUrl')
+          mkdir -p artifacts
+          curl -fL "$BUILD_URL" -o artifacts/lockbox-local.apk
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: artifacts/lockbox-local.apk
+
+  build-ios:
+    name: Build iOS IPA
+    runs-on: ubuntu-latest
+    # Requires Apple credentials configured in EAS (APPLE_ID, APPLE_TEAM_ID, etc.)
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build iOS IPA with EAS
+        run: |
+          BUILD_RESULT=$(eas build --platform ios --profile preview \
+            --non-interactive --wait --json 2>/dev/null)
+          BUILD_URL=$(echo "$BUILD_RESULT" | jq -r '.artifacts.buildUrl')
+          mkdir -p artifacts
+          curl -fL "$BUILD_URL" -o artifacts/lockbox-local.ipa
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: artifacts/lockbox-local.ipa
+
+  release:
+    name: Create GitHub Release
+    needs: [build-android, build-ios]
+    if: always() && needs.build-android.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
@@ -35,7 +106,6 @@ jobs:
         id: changelog
         run: |
           if [ -f CHANGELOG.md ]; then
-            # Extract section between this tag and the previous one
             VERSION="${{ steps.version.outputs.VERSION }}"
             NOTES=$(awk "/^## \[?v?${VERSION}\]?/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
             if [ -z "$NOTES" ]; then
@@ -48,17 +118,18 @@ jobs:
             echo "NOTES=Release ${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Setup Expo
-        uses: expo/expo-github-action@v8
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
         with:
-          expo-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+          name: android-apk
+          path: dist/
 
-      - name: Build Android APK (Expo Go compatible)
-        run: npx expo export --platform android --output-dir dist/android
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        continue-on-error: true
+      - name: Download iOS IPA
+        if: needs.build-ios.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-ipa
+          path: dist/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -67,7 +138,6 @@ jobs:
           body: ${{ steps.changelog.outputs.NOTES }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
-          files: |
-            dist/android/**/*
+          files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
