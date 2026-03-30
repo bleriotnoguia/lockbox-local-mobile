@@ -4,12 +4,16 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useAuthStore, useLockboxStore, useThemeStore } from '../src/store';
+import { useNotifications, useScreenSecurity } from '../src/hooks';
 
 export default function RootLayout() {
   const { isAuthenticated, isLoading, checkMasterPassword } = useAuthStore();
-  const { fetchLockboxes, checkAndUpdateStates } = useLockboxStore();
+  const { fetchLockboxes, checkAndUpdateStates, lockboxes } = useLockboxStore();
   const effectiveTheme = useThemeStore((s) => s.getEffectiveTheme());
   const appState = useRef(AppState.currentState);
+
+  useNotifications(isAuthenticated ? lockboxes : []);
+  useScreenSecurity();
 
   useEffect(() => {
     checkMasterPassword();
