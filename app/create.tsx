@@ -1,10 +1,535 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Switch,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { useLockboxStore } from '../src/store';
+import { useTranslation } from '../src/i18n';
+import { CATEGORIES, DELAY_PRESETS } from '../src/constants';
+import { serializeTags } from '../src/types';
+
+type TimeUnit = 'seconds' | 'minutes' | 'hours' | 'days';
+
+function delayToSeconds(value: number, unit: TimeUnit): number {
+  switch (unit) {
+    case 'seconds': return value;
+    case 'minutes': return value * 60;
+    case 'hours': return value * 3600;
+    case 'days': return value * 86400;
+  }
+}
 
 export default function CreateScreen() {
+  const { t } = useTranslation();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const createLockbox = useLockboxStore((s) => s.createLockbox);
+
+  const [name, setName] = useState('');
+  const [content, setContent] = useState('');
+  const [category, setCategory] = useState<string | undefined>();
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+
+  const [unlockValue, setUnlockValue] = useState('60');
+  const [unlockUnit, setUnlockUnit] = useState<TimeUnit>('minutes');
+  const [relockValue, setRelockValue] = useState('24');
+  const [relockUnit, setRelockUnit] = useState<TimeUnit>('hours');
+
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [reflectionEnabled, setReflectionEnabled] = useState(false);
+  const [reflectionMessage, setReflectionMessage] = useState('');
+  const [reflectionChecklist, setReflectionChecklist] = useState('');
+  const [penaltyEnabled, setPenaltyEnabled] = useState(false);
+  const [penaltyValue, setPenaltyValue] = useState('30');
+  const [penaltyUnit, setPenaltyUnit] = useState<TimeUnit>('minutes');
+  const [panicCode, setPanicCode] = useState('');
+  const [scheduledEnabled, setScheduledEnabled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleAddTag = () => {
+    const trimmed = tagInput.trim();
+    if (trimmed && !tags.includes(trimmed)) {
+      setTags([...tags, trimmed]);
+    }
+    setTagInput('');
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    setTags(tags.filter((t) => t !== tag));
+  };
+
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      Alert.alert('', t('createLockbox.nameRequired'));
+      return;
+    }
+    if (!content.trim()) {
+      Alert.alert('', t('createLockbox.contentRequired'));
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await createLockbox({
+        name: name.trim(),
+        content: content.trim(),
+        category,
+        unlock_delay_seconds: delayToSeconds(
+          Number(unlockValue) || 60,
+          unlockUnit
+        ),
+        relock_delay_seconds: delayToSeconds(
+          Number(relockValue) || 24,
+          relockUnit
+        ),
+        reflection_enabled: reflectionEnabled,
+        reflection_message: reflectionMessage.trim() || undefined,
+        reflection_checklist: reflectionChecklist.trim() || undefined,
+        penalty_enabled: penaltyEnabled,
+        penalty_seconds: penaltyEnabled
+          ? delayToSeconds(Number(penaltyValue) || 30, penaltyUnit)
+          : 0,
+        panic_code: panicCode.trim() || undefined,
+        scheduled_unlock_at: scheduledEnabled
+          ? scheduledDate.getTime()
+          : undefined,
+        tags: serializeTags(tags),
+      });
+
+      router.back();
+    } catch {
+      Alert.alert('', t('createLockbox.createError'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <View className="flex-1 items-center justify-center bg-gray-50 dark:bg-gray-900">
-      <Text className="text-gray-500">Create Lockbox (placeholder)</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      className="flex-1 bg-gray-50 dark:bg-gray-900"
+    >
+      {/* Header */}
+      <View
+        className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+        style={{ paddingTop: insets.top + 8 }}
+      >
+        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
+          <Text className="text-primary-600 dark:text-primary-400 text-base">
+            {t('createLockbox.cancel')}
+          </Text>
+        </TouchableOpacity>
+        <Text className="text-lg font-bold text-gray-900 dark:text-white">
+          {t('createLockbox.title')}
+        </Text>
+        <TouchableOpacity
+          onPress={handleCreate}
+          disabled={isSubmitting}
+          activeOpacity={0.7}
+        >
+          <Text
+            className={`text-base font-semibold ${
+              isSubmitting
+                ? 'text-gray-400'
+                : 'text-primary-600 dark:text-primary-400'
+            }`}
+          >
+            {t('createLockbox.create')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="px-4 py-4 pb-8"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Name */}
+        <View className="mb-4">
+          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {t('createLockbox.name')}
+          </Text>
+          <TextInput
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-base text-gray-900 dark:text-white"
+            placeholder={t('createLockbox.namePlaceholder')}
+            placeholderTextColor="#9ca3af"
+            value={name}
+            onChangeText={setName}
+          />
+        </View>
+
+        {/* Content */}
+        <View className="mb-4">
+          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {t('createLockbox.content')}
+          </Text>
+          <TextInput
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-base text-gray-900 dark:text-white min-h-[100px]"
+            placeholder={t('createLockbox.contentPlaceholder')}
+            placeholderTextColor="#9ca3af"
+            value={content}
+            onChangeText={setContent}
+            multiline
+            textAlignVertical="top"
+            secureTextEntry
+          />
+        </View>
+
+        {/* Category */}
+        <View className="mb-4">
+          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {t('createLockbox.category')}
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerClassName="gap-2"
+          >
+            <TouchableOpacity
+              className={`px-3 py-2 rounded-lg ${
+                !category
+                  ? 'bg-primary-600'
+                  : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
+              }`}
+              onPress={() => setCategory(undefined)}
+              activeOpacity={0.7}
+            >
+              <Text
+                className={`text-xs ${
+                  !category ? 'text-white' : 'text-gray-600 dark:text-gray-400'
+                }`}
+              >
+                {t('createLockbox.noCategory')}
+              </Text>
+            </TouchableOpacity>
+            {CATEGORIES.map((c) => (
+              <TouchableOpacity
+                key={c}
+                className={`px-3 py-2 rounded-lg ${
+                  category === c
+                    ? 'bg-primary-600'
+                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
+                }`}
+                onPress={() => setCategory(c)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  className={`text-xs ${
+                    category === c
+                      ? 'text-white'
+                      : 'text-gray-600 dark:text-gray-400'
+                  }`}
+                >
+                  {t(`category.${c}`) || c}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Tags */}
+        <View className="mb-4">
+          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {t('tags.label')}
+          </Text>
+          <View className="flex-row flex-wrap gap-1.5 mb-2">
+            {tags.map((tag) => (
+              <TouchableOpacity
+                key={tag}
+                className="flex-row items-center bg-primary-100 dark:bg-primary-900/30 px-2.5 py-1 rounded-full"
+                onPress={() => handleRemoveTag(tag)}
+              >
+                <Text className="text-xs text-primary-700 dark:text-primary-300 mr-1">
+                  {tag}
+                </Text>
+                <Text className="text-xs text-primary-500">×</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextInput
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white"
+            placeholder={t('tags.placeholder')}
+            placeholderTextColor="#9ca3af"
+            value={tagInput}
+            onChangeText={(text) => {
+              if (text.endsWith(',') || text.endsWith(' ')) {
+                setTagInput('');
+                const trimmed = text.slice(0, -1).trim();
+                if (trimmed && !tags.includes(trimmed)) {
+                  setTags([...tags, trimmed]);
+                }
+              } else {
+                setTagInput(text);
+              }
+            }}
+            onSubmitEditing={handleAddTag}
+            returnKeyType="done"
+          />
+        </View>
+
+        {/* Unlock Delay */}
+        <DelayPicker
+          label={t('createLockbox.unlockDelay')}
+          hint={t('createLockbox.unlockDelayHint')}
+          value={unlockValue}
+          unit={unlockUnit}
+          onValueChange={setUnlockValue}
+          onUnitChange={setUnlockUnit}
+        />
+
+        {/* Relock Delay */}
+        <DelayPicker
+          label={t('createLockbox.relockDelay')}
+          hint={t('createLockbox.relockDelayHint')}
+          value={relockValue}
+          unit={relockUnit}
+          onValueChange={setRelockValue}
+          onUnitChange={setRelockUnit}
+        />
+
+        {/* Advanced Options */}
+        <TouchableOpacity
+          className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4"
+          onPress={() => setShowAdvanced(!showAdvanced)}
+          activeOpacity={0.8}
+        >
+          <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+            {showAdvanced ? '▼' : '▶'} {t('createLockbox.advancedOptions')}
+          </Text>
+        </TouchableOpacity>
+
+        {showAdvanced && (
+          <View className="gap-4 mb-4">
+            {/* Reflection */}
+            <View className="bg-white dark:bg-gray-800 rounded-xl p-4">
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="flex-1 mr-3">
+                  <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    {t('createLockbox.reflectionSection')}
+                  </Text>
+                  <Text className="text-xs text-gray-500 mt-0.5">
+                    {t('createLockbox.reflectionSectionHint')}
+                  </Text>
+                </View>
+                <Switch
+                  value={reflectionEnabled}
+                  onValueChange={setReflectionEnabled}
+                  trackColor={{ true: '#6366f1' }}
+                />
+              </View>
+              {reflectionEnabled && (
+                <View className="mt-3 gap-3">
+                  <TextInput
+                    className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white"
+                    placeholder={t('createLockbox.reflectionMessagePlaceholder')}
+                    placeholderTextColor="#9ca3af"
+                    value={reflectionMessage}
+                    onChangeText={setReflectionMessage}
+                  />
+                  <TextInput
+                    className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white min-h-[80px]"
+                    placeholder={t('createLockbox.reflectionChecklistPlaceholder')}
+                    placeholderTextColor="#9ca3af"
+                    value={reflectionChecklist}
+                    onChangeText={setReflectionChecklist}
+                    multiline
+                    textAlignVertical="top"
+                  />
+                </View>
+              )}
+            </View>
+
+            {/* Penalty */}
+            <View className="bg-white dark:bg-gray-800 rounded-xl p-4">
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="flex-1 mr-3">
+                  <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    {t('createLockbox.penaltySection')}
+                  </Text>
+                  <Text className="text-xs text-gray-500 mt-0.5">
+                    {t('createLockbox.penaltySectionHint')}
+                  </Text>
+                </View>
+                <Switch
+                  value={penaltyEnabled}
+                  onValueChange={setPenaltyEnabled}
+                  trackColor={{ true: '#6366f1' }}
+                />
+              </View>
+              {penaltyEnabled && (
+                <View className="mt-3">
+                  <DelayPicker
+                    label={t('createLockbox.penaltyDelay')}
+                    hint={t('createLockbox.penaltyDelayHint')}
+                    value={penaltyValue}
+                    unit={penaltyUnit}
+                    onValueChange={setPenaltyValue}
+                    onUnitChange={setPenaltyUnit}
+                  />
+                </View>
+              )}
+            </View>
+
+            {/* Panic Code */}
+            <View className="bg-white dark:bg-gray-800 rounded-xl p-4">
+              <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                {t('createLockbox.panicSection')}
+              </Text>
+              <Text className="text-xs text-gray-500 mb-3">
+                {t('createLockbox.panicSectionHint')}
+              </Text>
+              <TextInput
+                className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white"
+                placeholder={t('createLockbox.panicCodePlaceholder')}
+                placeholderTextColor="#9ca3af"
+                value={panicCode}
+                onChangeText={setPanicCode}
+                secureTextEntry
+              />
+            </View>
+
+            {/* Scheduled Unlock */}
+            <View className="bg-white dark:bg-gray-800 rounded-xl p-4">
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="flex-1 mr-3">
+                  <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    {t('createLockbox.scheduledSection')}
+                  </Text>
+                  <Text className="text-xs text-gray-500 mt-0.5">
+                    {t('createLockbox.scheduledSectionHint')}
+                  </Text>
+                </View>
+                <Switch
+                  value={scheduledEnabled}
+                  onValueChange={setScheduledEnabled}
+                  trackColor={{ true: '#6366f1' }}
+                />
+              </View>
+              {scheduledEnabled && (
+                <View className="mt-3">
+                  <TouchableOpacity
+                    className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-3"
+                    onPress={() => setShowDatePicker(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text className="text-sm text-gray-700 dark:text-gray-300">
+                      {scheduledDate.toLocaleString()}
+                    </Text>
+                  </TouchableOpacity>
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={scheduledDate}
+                      mode="datetime"
+                      minimumDate={new Date()}
+                      onChange={(_, date) => {
+                        setShowDatePicker(Platform.OS === 'ios');
+                        if (date) setScheduledDate(date);
+                      }}
+                    />
+                  )}
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function DelayPicker({
+  label,
+  hint,
+  value,
+  unit,
+  onValueChange,
+  onUnitChange,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  unit: TimeUnit;
+  onValueChange: (v: string) => void;
+  onUnitChange: (u: TimeUnit) => void;
+}) {
+  const { t } = useTranslation();
+  const units: TimeUnit[] = ['seconds', 'minutes', 'hours', 'days'];
+
+  return (
+    <View className="mb-4">
+      <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5">
+        {label}
+      </Text>
+      <Text className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+        {hint}
+      </Text>
+      <View className="flex-row gap-2">
+        <TextInput
+          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-base text-gray-900 dark:text-white w-24"
+          value={value}
+          onChangeText={onValueChange}
+          keyboardType="numeric"
+        />
+        <View className="flex-row flex-1 gap-1">
+          {units.map((u) => (
+            <TouchableOpacity
+              key={u}
+              className={`flex-1 py-3 rounded-xl items-center ${
+                unit === u
+                  ? 'bg-primary-600'
+                  : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
+              }`}
+              onPress={() => onUnitChange(u)}
+              activeOpacity={0.7}
+            >
+              <Text
+                className={`text-[10px] font-medium ${
+                  unit === u
+                    ? 'text-white'
+                    : 'text-gray-600 dark:text-gray-400'
+                }`}
+              >
+                {t(`timeUnits.${u}`)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Presets */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        className="mt-2"
+        contentContainerClassName="gap-1.5"
+      >
+        {DELAY_PRESETS[unit].map((preset) => (
+          <TouchableOpacity
+            key={preset}
+            className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-full"
+            onPress={() => onValueChange(String(preset))}
+            activeOpacity={0.7}
+          >
+            <Text className="text-xs text-gray-600 dark:text-gray-400">
+              {preset}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
     </View>
   );
 }
