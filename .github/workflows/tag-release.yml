@@ -1,0 +1,66 @@
+name: Tag & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 1.0.1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release?'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  tag:
+    name: Create tag and trigger release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Bump version in package.json and app.json
+        run: |
+          VERSION="${{ inputs.version }}"
+          # package.json
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+            pkg.version = process.argv[1];
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          " "$VERSION"
+          # app.json
+          node -e "
+            const fs = require('fs');
+            const app = JSON.parse(fs.readFileSync('app.json','utf8'));
+            app.expo.version = process.argv[1];
+            // Increment buildNumber / versionCode automatically
+            const parts = process.argv[1].split('.').map(Number);
+            const build = parts[0] * 10000 + parts[1] * 100 + parts[2];
+            if (app.expo.ios) app.expo.ios.buildNumber = String(build);
+            if (app.expo.android) app.expo.android.versionCode = build;
+            fs.writeFileSync('app.json', JSON.stringify(app, null, 2) + '\n');
+          " "$VERSION"
+
+      - name: Commit version bump
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json app.json
+          git commit -m "chore: bump version to ${{ inputs.version }}"
+          git push
+
+      - name: Create and push tag
+        run: |
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
