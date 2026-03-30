@@ -10,6 +10,13 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          df -h
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -31,8 +38,15 @@ jobs:
       - name: Build Android APK with EAS
         run: |
           BUILD_RESULT=$(eas build --platform android --profile preview \
-            --non-interactive --wait --json 2>/dev/null)
+            --non-interactive --wait --json)
+          echo "EAS build output: $BUILD_RESULT"
           BUILD_URL=$(echo "$BUILD_RESULT" | jq -r '.artifacts.buildUrl')
+          if [ -z "$BUILD_URL" ] || [ "$BUILD_URL" = "null" ]; then
+            echo "ERROR: Could not extract build URL from EAS output"
+            echo "$BUILD_RESULT"
+            exit 1
+          fi
+          echo "Downloading APK from: $BUILD_URL"
           mkdir -p artifacts
           curl -fL "$BUILD_URL" -o artifacts/lockbox-local.apk
         env:
@@ -47,7 +61,7 @@ jobs:
   build-ios:
     name: Build iOS IPA
     runs-on: ubuntu-latest
-    # Requires Apple credentials configured in EAS (APPLE_ID, APPLE_TEAM_ID, etc.)
+    # Requires Apple credentials configured in EAS (run: eas credentials --platform ios)
     continue-on-error: true
     steps:
       - name: Checkout
@@ -71,8 +85,15 @@ jobs:
       - name: Build iOS IPA with EAS
         run: |
           BUILD_RESULT=$(eas build --platform ios --profile preview \
-            --non-interactive --wait --json 2>/dev/null)
+            --non-interactive --wait --json)
+          echo "EAS build output: $BUILD_RESULT"
           BUILD_URL=$(echo "$BUILD_RESULT" | jq -r '.artifacts.buildUrl')
+          if [ -z "$BUILD_URL" ] || [ "$BUILD_URL" = "null" ]; then
+            echo "ERROR: Could not extract build URL from EAS output"
+            echo "$BUILD_RESULT"
+            exit 1
+          fi
+          echo "Downloading IPA from: $BUILD_URL"
           mkdir -p artifacts
           curl -fL "$BUILD_URL" -o artifacts/lockbox-local.ipa
         env:
