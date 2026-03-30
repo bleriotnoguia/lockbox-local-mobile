@@ -40,7 +40,7 @@ jobs:
           BUILD_RESULT=$(eas build --platform android --profile preview \
             --non-interactive --wait --json)
           echo "EAS build output: $BUILD_RESULT"
-          BUILD_URL=$(echo "$BUILD_RESULT" | jq -r '.artifacts.buildUrl')
+          BUILD_URL=$(echo "$BUILD_RESULT" | jq -r '.[0].artifacts.buildUrl')
           if [ -z "$BUILD_URL" ] || [ "$BUILD_URL" = "null" ]; then
             echo "ERROR: Could not extract build URL from EAS output"
             echo "$BUILD_RESULT"
@@ -82,28 +82,28 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build iOS IPA with EAS
+      - name: Build iOS simulator app with EAS
         run: |
           BUILD_RESULT=$(eas build --platform ios --profile preview \
             --non-interactive --wait --json)
           echo "EAS build output: $BUILD_RESULT"
-          BUILD_URL=$(echo "$BUILD_RESULT" | jq -r '.artifacts.buildUrl')
+          BUILD_URL=$(echo "$BUILD_RESULT" | jq -r '.[0].artifacts.buildUrl')
           if [ -z "$BUILD_URL" ] || [ "$BUILD_URL" = "null" ]; then
             echo "ERROR: Could not extract build URL from EAS output"
             echo "$BUILD_RESULT"
             exit 1
           fi
-          echo "Downloading IPA from: $BUILD_URL"
+          echo "Downloading simulator build from: $BUILD_URL"
           mkdir -p artifacts
-          curl -fL "$BUILD_URL" -o artifacts/lockbox-local.ipa
+          curl -fL "$BUILD_URL" -o artifacts/lockbox-local-simulator.tar.gz
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Upload IPA artifact
+      - name: Upload iOS simulator artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ipa
-          path: artifacts/lockbox-local.ipa
+          name: ios-simulator
+          path: artifacts/lockbox-local-simulator.tar.gz
 
   release:
     name: Create GitHub Release
@@ -145,11 +145,11 @@ jobs:
           name: android-apk
           path: dist/
 
-      - name: Download iOS IPA
+      - name: Download iOS simulator build
         if: needs.build-ios.result == 'success'
         uses: actions/download-artifact@v4
         with:
-          name: ios-ipa
+          name: ios-simulator
           path: dist/
 
       - name: Create GitHub Release
