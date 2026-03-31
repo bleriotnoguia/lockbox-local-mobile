@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { router } from "expo-router";
@@ -120,34 +121,39 @@ export default function CreateScreen() {
     }
 
     setIsSubmitting(true);
-    try {
-      await createLockbox({
-        name: name.trim(),
-        content: content.trim(),
-        category,
-        unlock_delay_seconds: delayToSeconds(unlockNum, unlockUnit),
-        relock_delay_seconds: delayToSeconds(relockNum, relockUnit),
-        reflection_enabled: reflectionEnabled,
-        reflection_message: reflectionMessage.trim() || undefined,
-        reflection_checklist: reflectionChecklist.trim() || undefined,
-        penalty_enabled: penaltyEnabled,
-        penalty_seconds: penaltyEnabled
-          ? delayToSeconds(penaltyNum, penaltyUnit)
-          : 0,
-        panic_code: panicCode.trim() || undefined,
-        scheduled_unlock_at: scheduledEnabled
-          ? scheduledDate.getTime()
-          : undefined,
-        tags: serializeTags(tags),
-      });
+    
+    // Use setTimeout to allow React Native to render the loading spinner
+    // before blocking the thread with heavy cryptographic operations
+    setTimeout(async () => {
+      try {
+        await createLockbox({
+          name: name.trim(),
+          content: content.trim(),
+          category,
+          unlock_delay_seconds: delayToSeconds(unlockNum, unlockUnit),
+          relock_delay_seconds: delayToSeconds(relockNum, relockUnit),
+          reflection_enabled: reflectionEnabled,
+          reflection_message: reflectionMessage.trim() || undefined,
+          reflection_checklist: reflectionChecklist.trim() || undefined,
+          penalty_enabled: penaltyEnabled,
+          penalty_seconds: penaltyEnabled
+            ? delayToSeconds(penaltyNum, penaltyUnit)
+            : 0,
+          panic_code: panicCode.trim() || undefined,
+          scheduled_unlock_at: scheduledEnabled
+            ? scheduledDate.getTime()
+            : undefined,
+          tags: serializeTags(tags),
+        });
 
-      if (router.canDismiss()) router.dismiss();
-      else router.replace("/(tabs)/lockboxes");
-    } catch (e) {
-      Alert.alert("Error", String(e));
-    } finally {
-      setIsSubmitting(false);
-    }
+        if (router.canDismiss()) router.dismiss();
+        else router.replace("/(tabs)/lockboxes");
+      } catch (e) {
+        Alert.alert("Error", String(e));
+      } finally {
+        setIsSubmitting(false);
+      }
+    }, 50);
   };
 
   return (
@@ -176,15 +182,19 @@ export default function CreateScreen() {
           disabled={isSubmitting}
           activeOpacity={0.7}
         >
-          <Text
-            className={`text-base font-semibold ${
-              isSubmitting
-                ? "text-gray-400"
-                : "text-primary-600 dark:text-primary-400"
-            }`}
-          >
-            {t("createLockbox.create")}
-          </Text>
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#9ca3af" />
+          ) : (
+            <Text
+              className={`text-base font-semibold ${
+                isSubmitting
+                  ? "text-gray-400"
+                  : "text-primary-600 dark:text-primary-400"
+              }`}
+            >
+              {t("createLockbox.create")}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -530,9 +540,13 @@ export default function CreateScreen() {
           disabled={isSubmitting}
           activeOpacity={0.8}
         >
-          <Text className="text-white text-base font-bold">
-            {t("createLockbox.create")}
-          </Text>
+          {isSubmitting ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text className="text-white text-base font-bold">
+              {t("createLockbox.create")}
+            </Text>
+          )}
         </TouchableOpacity>
       </KeyboardAwareScrollView>
     </View>

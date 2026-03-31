@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 1.0.1)'
+        description: "Version to release (e.g. 1.2.0)"
         required: true
         type: string
       prerelease:
-        description: 'Mark as pre-release?'
+        description: "Mark as pre-release?"
         required: false
         type: boolean
         default: false
@@ -27,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Bump version in package.json and app.json
         run: |
