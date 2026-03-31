@@ -1,5 +1,5 @@
 import { gcm } from '@noble/ciphers/aes.js';
-import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
+import { pbkdf2, pbkdf2Async } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
@@ -28,6 +28,23 @@ function deriveKey(password: string, salt: Uint8Array): Uint8Array {
   if (cached) return cached;
 
   const key = pbkdf2(sha256, password, salt, {
+    c: PBKDF2_ITERATIONS,
+    dkLen: KEY_LENGTH,
+  });
+
+  if (_keyCache.size >= _KEY_CACHE_MAX) {
+    _keyCache.delete(_keyCache.keys().next().value!);
+  }
+  _keyCache.set(cacheKey, key);
+  return key;
+}
+
+async function deriveKeyAsync(password: string, salt: Uint8Array): Promise<Uint8Array> {
+  const cacheKey = `${password}:${bytesToHex(salt)}`;
+  const cached = _keyCache.get(cacheKey);
+  if (cached) return cached;
+
+  const key = await pbkdf2Async(sha256, password, salt, {
     c: PBKDF2_ITERATIONS,
     dkLen: KEY_LENGTH,
   });
@@ -86,6 +103,28 @@ export function decrypt(encrypted: string, masterHash: string): string {
   const ciphertextWithTag = combined.slice(SALT_LENGTH + NONCE_LENGTH);
 
   const key = deriveKey(masterHash, salt);
+
+  const aes = gcm(key, nonce);
+  const plaintext = aes.decrypt(ciphertextWithTag);
+
+  return new TextDecoder().decode(plaintext);
+}
+
+/**
+ * Decrypts content encrypted with encrypt(), asynchronously.
+ */
+export async function decryptAsync(encrypted: string, masterHash: string): Promise<string> {
+  const combined = base64ToUint8(encrypted);
+
+  if (combined.length < SALT_LENGTH + NONCE_LENGTH + 16) {
+    throw new Error('Invalid encrypted data format');
+  }
+
+  const salt = combined.slice(0, SALT_LENGTH);
+  const nonce = combined.slice(SALT_LENGTH, SALT_LENGTH + NONCE_LENGTH);
+  const ciphertextWithTag = combined.slice(SALT_LENGTH + NONCE_LENGTH);
+
+  const key = await deriveKeyAsync(masterHash, salt);
 
   const aes = gcm(key, nonce);
   const plaintext = aes.decrypt(ciphertextWithTag);

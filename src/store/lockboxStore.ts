@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
 import * as db from '../db';
-import { encrypt, decrypt, hashPassword } from '../crypto';
+import { encrypt, decrypt, decryptAsync, hashPassword } from '../crypto';
 import { useAuthStore } from './authStore';
 import type { Lockbox, CreateLockboxInput, AccessLogEntry } from '../types';
 import { parseTags } from '../types';
@@ -43,6 +43,8 @@ interface LockboxState {
   clearError: () => void;
 }
 
+let _checkInProgress = false;
+
 export const useLockboxStore = create<LockboxState>((set, get) => ({
   lockboxes: [],
   selectedLockbox: null,
@@ -64,14 +66,15 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
 
   fetchLockboxDecrypted: async (id: number) => {
     try {
-      const lockbox = await db.getLockbox(id);
+      const { lockboxes } = get();
+      const lockbox = lockboxes.find((lb) => lb.id === id) ?? await db.getLockbox(id);
       if (!lockbox) return null;
 
       if (!lockbox.is_locked) {
         const masterHash = useAuthStore.getState().getMasterHash();
         if (masterHash) {
           try {
-            const decrypted = decrypt(lockbox.content, masterHash);
+            const decrypted = await decryptAsync(lockbox.content, masterHash);
             return { ...lockbox, content: decrypted };
           } catch {
             return lockbox;
@@ -337,6 +340,27 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
   setSelectedTag: (tag) => set({ selectedTag: tag }),
 
   checkAndUpdateStates: async () => {
+    if (_checkInProgress) return;
+
+    const { lockboxes: current } = get();
+    const now = Date.now();
+
+    const needsUpdate = current.some(
+      (lb) =>
+        (lb.is_locked &&
+          lb.unlock_timestamp != null &&
+          lb.unlock_timestamp <= now) ||
+        (lb.is_locked &&
+          lb.scheduled_unlock_at != null &&
+          lb.scheduled_unlock_at <= now) ||
+        (!lb.is_locked &&
+          lb.relock_timestamp != null &&
+          lb.relock_timestamp <= now)
+    );
+
+    if (!needsUpdate) return;
+
+    _checkInProgress = true;
     try {
       const lockboxes = await db.checkAndUpdateStates();
       const { selectedLockbox } = get();
@@ -348,6 +372,8 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
       });
     } catch (e) {
       console.warn('[checkAndUpdateStates]', e);
+    } finally {
+      _checkInProgress = false;
     }
   },
 

@@ -1,6 +1,7 @@
 export {
   encrypt,
   decrypt,
+  decryptAsync,
   hashPassword,
   verifyPassword,
   hmacSign,

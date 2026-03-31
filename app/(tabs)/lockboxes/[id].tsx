@@ -60,6 +60,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
     usePanicCode,
     resetPanicCode,
     getAccessLog,
+    checkAndUpdateStates,
   } = useLockboxStore();
 
   const [decryptedContent, setDecryptedContent] = useState<string | null>(null);
@@ -82,6 +83,18 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
 
   const countdown = useCountdown(countdownTimestamp);
 
+  useEffect(() => {
+    if (!countdown || countdown.total > 0) return;
+    if (status === 'locked' || status === 'unlocked') return;
+    let cancelled = false;
+    (async () => {
+      await checkAndUpdateStates();
+      if (cancelled) return;
+      await checkAndUpdateStates();
+    })();
+    return () => { cancelled = true; };
+  }, [countdown?.total, status, checkAndUpdateStates]);
+
   const loadDecryptedContent = useCallback(async () => {
     if (status !== 'unlocked') {
       setDecryptedContent(null);
@@ -89,6 +102,8 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
       return;
     }
     setIsDecrypting(true);
+    // On laisse le temps à React d'afficher le spinner avant de lancer la tâche lourde
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
     try {
       const result = await fetchLockboxDecrypted(lockbox.id);
       setDecryptedContent(result?.content ?? null);
