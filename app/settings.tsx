@@ -247,7 +247,8 @@ export default function SettingsScreen() {
           className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 items-center"
           onPress={() => {
             logout();
-            router.replace('/');
+            router.dismissAll();
+            router.replace('/(auth)/login');
           }}
           activeOpacity={0.7}
         >

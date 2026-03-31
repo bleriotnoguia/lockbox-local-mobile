@@ -72,7 +72,7 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1"
+      className="flex-1 bg-white dark:bg-gray-950"
     >
       <ScrollView
         contentContainerClassName="flex-1 justify-center px-8"

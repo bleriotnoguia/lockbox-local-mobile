@@ -7,7 +7,6 @@ import {
   ScrollView,
   Switch,
   Alert,
-  KeyboardAvoidingView,
   Platform,
 } from "react-native";
 import { router } from "expo-router";
@@ -60,6 +59,7 @@ export default function CreateScreen() {
   const [scheduledEnabled, setScheduledEnabled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerMode, setDatePickerMode] = useState<"date" | "time">("date");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleAddTag = () => {
@@ -122,10 +122,7 @@ export default function CreateScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-gray-50 dark:bg-gray-900"
-    >
+    <View className="flex-1 bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <View
         className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700"
@@ -167,6 +164,7 @@ export default function CreateScreen() {
         contentContainerClassName="px-4 py-4 pb-8"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets
       >
         {/* Name */}
         <View className="mb-4">
@@ -437,7 +435,10 @@ export default function CreateScreen() {
                 <View className="mt-3">
                   <TouchableOpacity
                     className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-3"
-                    onPress={() => setShowDatePicker(true)}
+                    onPress={() => {
+                      setDatePickerMode("date");
+                      setShowDatePicker(true);
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text className="text-sm text-gray-700 dark:text-gray-300">
@@ -447,11 +448,27 @@ export default function CreateScreen() {
                   {showDatePicker && (
                     <DateTimePicker
                       value={scheduledDate}
-                      mode="datetime"
+                      mode={Platform.OS === "android" ? datePickerMode : "datetime"}
                       minimumDate={new Date()}
-                      onChange={(_, date) => {
-                        setShowDatePicker(Platform.OS === "ios");
-                        if (date) setScheduledDate(date);
+                      onChange={(event, date) => {
+                        if (event.type === "dismissed") {
+                          setShowDatePicker(false);
+                          setDatePickerMode("date");
+                          return;
+                        }
+                        if (Platform.OS === "android") {
+                          if (datePickerMode === "date") {
+                            if (date) setScheduledDate(date);
+                            setDatePickerMode("time");
+                          } else {
+                            if (date) setScheduledDate(date);
+                            setShowDatePicker(false);
+                            setDatePickerMode("date");
+                          }
+                        } else {
+                          setShowDatePicker(false);
+                          if (date) setScheduledDate(date);
+                        }
                       }}
                     />
                   )}
@@ -461,7 +478,7 @@ export default function CreateScreen() {
           </View>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

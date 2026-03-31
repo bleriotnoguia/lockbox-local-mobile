@@ -1,16 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
+  Switch,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../../src/store';
 import { useTranslation } from '../../src/i18n';
+
+const BIOMETRIC_ENABLED_KEY = 'lockbox_biometric_enabled';
 
 export default function SetupScreen() {
   const { t } = useTranslation();
@@ -18,6 +23,16 @@ export default function SetupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [enableBiometric, setEnableBiometric] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      setBiometricAvailable(hasHardware && isEnrolled);
+    })();
+  }, []);
 
   const handleCreate = async () => {
     setError(null);
@@ -36,13 +51,19 @@ export default function SetupScreen() {
     }
 
     await setMasterPassword(password);
+
+    await SecureStore.setItemAsync(
+      BIOMETRIC_ENABLED_KEY,
+      enableBiometric ? 'true' : 'false'
+    );
+
     router.replace('/(tabs)/lockboxes');
   };
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1"
+      className="flex-1 bg-white dark:bg-gray-950"
     >
       <ScrollView
         contentContainerClassName="flex-1 justify-center px-8"
@@ -105,6 +126,25 @@ export default function SetupScreen() {
               {t('login.passwordWarning')}
             </Text>
           </View>
+
+          {biometricAvailable && (
+            <View className="flex-row items-center justify-between bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3.5">
+              <View className="flex-1 mr-3">
+                <Text className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                  {t('login.enableBiometric')}
+                </Text>
+                <Text className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {t('login.enableBiometricHint')}
+                </Text>
+              </View>
+              <Switch
+                value={enableBiometric}
+                onValueChange={setEnableBiometric}
+                trackColor={{ false: '#d1d5db', true: '#6366f1' }}
+                thumbColor="#ffffff"
+              />
+            </View>
+          )}
 
           <TouchableOpacity
             className={`bg-primary-600 rounded-xl py-4 items-center mt-2 ${

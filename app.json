@@ -15,9 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.lockbox.local",
+      "bundleIdentifier": "com.bleriotnoguia.lockboxlocal",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Use Face ID to unlock Lockbox Local"
+        "NSFaceIDUsageDescription": "Use Face ID to unlock Lockbox Local",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -26,7 +27,8 @@
         "backgroundColor": "#1a1a2e"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.lockbox.local",
+      "package": "com.bleriotnoguia.lockboxlocal",
+      "versionCode": 1,
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"

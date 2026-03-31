@@ -1,15 +1,44 @@
-import { useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import type { Lockbox, LockboxStatus } from '../types';
 
 export function useLockboxStatus(lockbox: Lockbox): LockboxStatus {
-  return useMemo(() => {
-    return getLockboxStatus(lockbox);
+  const [status, setStatus] = useState<LockboxStatus>(() => getLockboxStatus(lockbox));
+
+  useEffect(() => {
+    setStatus(getLockboxStatus(lockbox));
+
+    const nextTransition = getNextTransitionMs(lockbox);
+    if (nextTransition === null) return;
+
+    const timer = setInterval(() => {
+      const newStatus = getLockboxStatus(lockbox);
+      setStatus(newStatus);
+
+      if (getNextTransitionMs(lockbox) === null) {
+        clearInterval(timer);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
   }, [
     lockbox.is_locked,
     lockbox.unlock_timestamp,
     lockbox.relock_timestamp,
     lockbox.scheduled_unlock_at,
   ]);
+
+  return status;
+}
+
+function getNextTransitionMs(lockbox: Lockbox): number | null {
+  const now = Date.now();
+  const candidates = [
+    lockbox.unlock_timestamp,
+    lockbox.scheduled_unlock_at,
+    lockbox.relock_timestamp,
+  ].filter((ts): ts is number => typeof ts === 'number' && ts > now);
+
+  return candidates.length > 0 ? Math.min(...candidates) : null;
 }
 
 export function getLockboxStatus(lockbox: Lockbox): LockboxStatus {
