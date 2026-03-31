@@ -13,6 +13,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { Ionicons } from "@expo/vector-icons";
 import { useLockboxStore } from "../src/store";
 import { useTranslation } from "../src/i18n";
 import { CATEGORIES, DELAY_PRESETS } from "../src/constants";
@@ -45,9 +46,9 @@ export default function CreateScreen() {
   const [tagInput, setTagInput] = useState("");
 
   const [unlockValue, setUnlockValue] = useState("60");
-  const [unlockUnit, setUnlockUnit] = useState<TimeUnit>("minutes");
+  const [unlockUnit, setUnlockUnit] = useState<TimeUnit>("seconds");
   const [relockValue, setRelockValue] = useState("24");
-  const [relockUnit, setRelockUnit] = useState<TimeUnit>("hours");
+  const [relockUnit, setRelockUnit] = useState<TimeUnit>("seconds");
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [reflectionEnabled, setReflectionEnabled] = useState(false);
@@ -55,7 +56,7 @@ export default function CreateScreen() {
   const [reflectionChecklist, setReflectionChecklist] = useState("");
   const [penaltyEnabled, setPenaltyEnabled] = useState(false);
   const [penaltyValue, setPenaltyValue] = useState("30");
-  const [penaltyUnit, setPenaltyUnit] = useState<TimeUnit>("minutes");
+  const [penaltyUnit, setPenaltyUnit] = useState<TimeUnit>("seconds");
   const [panicCode, setPanicCode] = useState("");
   const [scheduledEnabled, setScheduledEnabled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState(new Date());
@@ -85,26 +86,53 @@ export default function CreateScreen() {
       return;
     }
 
+    const unlockNum = Number(unlockValue);
+    if (isNaN(unlockNum) || unlockNum <= 0) {
+      Alert.alert(
+        "",
+        t("createLockbox.invalidUnlockDelay") ||
+          "Veuillez entrer un délai de déverrouillage valide (> 0).",
+      );
+      return;
+    }
+
+    const relockNum = Number(relockValue);
+    if (isNaN(relockNum) || relockNum <= 0) {
+      Alert.alert(
+        "",
+        t("createLockbox.invalidRelockDelay") ||
+          "Veuillez entrer un délai de reverrouillage valide (> 0).",
+      );
+      return;
+    }
+
+    let penaltyNum = 0;
+    if (penaltyEnabled) {
+      penaltyNum = Number(penaltyValue);
+      if (isNaN(penaltyNum) || penaltyNum <= 0) {
+        Alert.alert(
+          "",
+          t("createLockbox.invalidPenaltyDelay") ||
+            "Veuillez entrer un délai de pénalité valide (> 0).",
+        );
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       await createLockbox({
         name: name.trim(),
         content: content.trim(),
         category,
-        unlock_delay_seconds: delayToSeconds(
-          Number(unlockValue) || 60,
-          unlockUnit,
-        ),
-        relock_delay_seconds: delayToSeconds(
-          Number(relockValue) || 24,
-          relockUnit,
-        ),
+        unlock_delay_seconds: delayToSeconds(unlockNum, unlockUnit),
+        relock_delay_seconds: delayToSeconds(relockNum, relockUnit),
         reflection_enabled: reflectionEnabled,
         reflection_message: reflectionMessage.trim() || undefined,
         reflection_checklist: reflectionChecklist.trim() || undefined,
         penalty_enabled: penaltyEnabled,
         penalty_seconds: penaltyEnabled
-          ? delayToSeconds(Number(penaltyValue) || 30, penaltyUnit)
+          ? delayToSeconds(penaltyNum, penaltyUnit)
           : 0,
         panic_code: panicCode.trim() || undefined,
         scheduled_unlock_at: scheduledEnabled
@@ -114,7 +142,7 @@ export default function CreateScreen() {
       });
 
       if (router.canDismiss()) router.dismiss();
-      else router.replace('/(tabs)/lockboxes');
+      else router.replace("/(tabs)/lockboxes");
     } catch (e) {
       Alert.alert("Error", String(e));
     } finally {
@@ -132,7 +160,7 @@ export default function CreateScreen() {
         <TouchableOpacity
           onPress={() => {
             if (router.canDismiss()) router.dismiss();
-            else router.replace('/(tabs)/lockboxes');
+            else router.replace("/(tabs)/lockboxes");
           }}
           activeOpacity={0.7}
         >
@@ -162,7 +190,11 @@ export default function CreateScreen() {
 
       <KeyboardAwareScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 16,
+          paddingBottom: 32,
+        }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         enableOnAndroid
@@ -313,13 +345,18 @@ export default function CreateScreen() {
 
         {/* Advanced Options */}
         <TouchableOpacity
-          className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4"
+          className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4 flex-row items-center justify-between"
           onPress={() => setShowAdvanced(!showAdvanced)}
           activeOpacity={0.8}
         >
           <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            {showAdvanced ? "▼" : "▶"} {t("createLockbox.advancedOptions")}
+            {t("createLockbox.advancedOptions")}
           </Text>
+          <Ionicons
+            name={showAdvanced ? "chevron-down" : "chevron-forward"}
+            size={20}
+            color="#9ca3af"
+          />
         </TouchableOpacity>
 
         {showAdvanced && (
@@ -450,7 +487,9 @@ export default function CreateScreen() {
                   {showDatePicker && (
                     <DateTimePicker
                       value={scheduledDate}
-                      mode={Platform.OS === "android" ? datePickerMode : "datetime"}
+                      mode={
+                        Platform.OS === "android" ? datePickerMode : "datetime"
+                      }
                       minimumDate={new Date()}
                       onChange={(event, date) => {
                         if (event.type === "dismissed") {
@@ -479,6 +518,22 @@ export default function CreateScreen() {
             </View>
           </View>
         )}
+
+        {/* Bottom Create Button */}
+        <TouchableOpacity
+          className={`mt-2 mb-8 py-4 rounded-xl items-center justify-center ${
+            isSubmitting
+              ? "bg-primary-400 dark:bg-primary-800"
+              : "bg-primary-600 dark:bg-primary-500"
+          }`}
+          onPress={handleCreate}
+          disabled={isSubmitting}
+          activeOpacity={0.8}
+        >
+          <Text className="text-white text-base font-bold">
+            {t("createLockbox.create")}
+          </Text>
+        </TouchableOpacity>
       </KeyboardAwareScrollView>
     </View>
   );
@@ -516,17 +571,29 @@ function DelayPicker({
           value={value}
           onChangeText={onValueChange}
           keyboardType="numeric"
+          maxLength={4}
         />
         <View className="flex-row flex-1 gap-1">
           {units.map((u) => (
             <TouchableOpacity
               key={u}
-              className={`flex-1 py-3 rounded-xl items-center ${
+              className={`flex-1 py-3 rounded-xl items-center justify-center ${
                 unit === u
                   ? "bg-primary-600"
                   : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
               }`}
-              onPress={() => onUnitChange(u)}
+              onPress={() => {
+                if (unit !== u) {
+                  onUnitChange(u);
+                  // Reset value to the first preset of the new unit
+                  const firstPreset = DELAY_PRESETS[u][0];
+                  if (firstPreset) {
+                    onValueChange(String(firstPreset));
+                  } else {
+                    onValueChange("");
+                  }
+                }
+              }}
               activeOpacity={0.7}
             >
               <Text

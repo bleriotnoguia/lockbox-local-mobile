@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,22 +7,23 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-} from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
-import { useLockboxStore } from '../../../src/store';
+} from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
+import { useLockboxStore } from "../../../src/store";
 import {
   useLockboxStatus,
   getStatusColor,
   useCountdown,
   formatTimeRemaining,
-} from '../../../src/hooks';
-import { useTranslation } from '../../../src/i18n';
-import { ReflectionModal } from '../../../src/components/ReflectionModal';
-import { ExtendDelayModal } from '../../../src/components/ExtendDelayModal';
-import type { Lockbox, AccessLogEntry } from '../../../src/types';
+} from "../../../src/hooks";
+import { useTranslation } from "../../../src/i18n";
+import { ReflectionModal } from "../../../src/components/ReflectionModal";
+import { ExtendDelayModal } from "../../../src/components/ExtendDelayModal";
+import type { Lockbox, AccessLogEntry } from "../../../src/types";
 
 export default function LockboxDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -66,18 +67,18 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
   const [decryptedContent, setDecryptedContent] = useState<string | null>(null);
   const [isContentVisible, setIsContentVisible] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
-  const [panicInput, setPanicInput] = useState('');
+  const [panicInput, setPanicInput] = useState("");
   const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
   const [showExtendDelay, setShowExtendDelay] = useState(false);
 
   const countdownTimestamp =
-    status === 'unlocking'
+    status === "unlocking"
       ? lockbox.unlock_timestamp
-      : status === 'scheduled'
+      : status === "scheduled"
         ? lockbox.scheduled_unlock_at
-        : status === 'unlocked'
+        : status === "unlocked"
           ? lockbox.relock_timestamp
           : null;
 
@@ -85,18 +86,20 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
 
   useEffect(() => {
     if (!countdown || countdown.total > 0) return;
-    if (status === 'locked' || status === 'unlocked') return;
+    if (status === "locked" || status === "unlocked") return;
     let cancelled = false;
     (async () => {
       await checkAndUpdateStates();
       if (cancelled) return;
       await checkAndUpdateStates();
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [countdown?.total, status, checkAndUpdateStates]);
 
   const loadDecryptedContent = useCallback(async () => {
-    if (status !== 'unlocked') {
+    if (status !== "unlocked") {
       setDecryptedContent(null);
       setIsContentVisible(false);
       return;
@@ -131,35 +134,35 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
     }
 
     Alert.alert(
-      t('lockboxDetail.unlockConfirmTitle'),
-      t('lockboxDetail.unlockConfirmMessage', {
+      t("lockboxDetail.unlockConfirmTitle"),
+      t("lockboxDetail.unlockConfirmMessage", {
         delay: formatDelay(lockbox.unlock_delay_seconds),
       }),
       [
-        { text: t('common.cancel'), style: 'cancel' },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: t('common.confirm'),
+          text: t("common.confirm"),
           onPress: async () => {
             await unlockLockbox(lockbox.id);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           },
         },
-      ]
+      ],
     );
   };
 
   const handleCancel = () => {
     const message = lockbox.penalty_enabled
-      ? t('lockboxDetail.cancelWithPenaltyMessage', {
+      ? t("lockboxDetail.cancelWithPenaltyMessage", {
           penalty: formatDelay(lockbox.penalty_seconds),
         })
-      : t('lockboxDetail.cancelConfirmMessage');
+      : t("lockboxDetail.cancelConfirmMessage");
 
-    Alert.alert(t('lockboxDetail.cancelConfirmTitle'), message, [
-      { text: t('common.cancel'), style: 'cancel' },
+    Alert.alert(t("lockboxDetail.cancelConfirmTitle"), message, [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: t('common.confirm'),
-        style: 'destructive',
+        text: t("common.confirm"),
+        style: "destructive",
         onPress: async () => {
           await cancelUnlock(lockbox.id);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -177,19 +180,19 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
 
   const handleDelete = () => {
     Alert.alert(
-      t('lockboxDetail.deleteConfirmTitle'),
-      t('lockboxDetail.deleteConfirmMessage'),
+      t("lockboxDetail.deleteConfirmTitle"),
+      t("lockboxDetail.deleteConfirmMessage"),
       [
-        { text: t('common.cancel'), style: 'cancel' },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: t('common.delete'),
-          style: 'destructive',
+          text: t("common.delete"),
+          style: "destructive",
           onPress: async () => {
             await deleteLockbox(lockbox.id);
             router.back();
           },
         },
-      ]
+      ],
     );
   };
 
@@ -197,7 +200,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
     if (decryptedContent) {
       await Clipboard.setStringAsync(decryptedContent);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('', t('lockboxDetail.contentCopied'));
+      Alert.alert("", t("lockboxDetail.contentCopied"));
     }
   };
 
@@ -205,35 +208,19 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
     if (!panicInput.trim()) return;
     const result = await usePanicCode(lockbox.id, panicInput.trim());
     if (result) {
-      setPanicInput('');
+      setPanicInput("");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('', t('lockboxDetail.panicCodeSuccess'));
+      Alert.alert("", t("lockboxDetail.panicCodeSuccess"));
     } else {
-      Alert.alert('', t('lockboxDetail.panicCodeInvalid'));
+      Alert.alert("", t("lockboxDetail.panicCodeInvalid"));
     }
   };
 
-  const handleResetPanicCode = () => {
-    Alert.prompt?.(
-      t('lockboxDetail.resetPanicCode'),
-      '',
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.confirm'),
-          onPress: (newCode?: string) => {
-            if (newCode?.trim()) {
-              resetPanicCode(lockbox.id, newCode.trim());
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
-  };
-
   return (
-    <View className="flex-1 bg-gray-50 dark:bg-gray-900" style={{ paddingTop: insets.top }}>
+    <View
+      className="flex-1 bg-gray-50 dark:bg-gray-900"
+      style={{ paddingTop: insets.top }}
+    >
       {/* Header */}
       <View className="flex-row items-center px-4 py-3">
         <TouchableOpacity
@@ -251,8 +238,14 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
         >
           {lockbox.name}
         </Text>
-        <TouchableOpacity onPress={handleDelete} className="p-1" activeOpacity={0.7}>
-          <Text className="text-red-500 text-sm">{t('lockboxDetail.delete')}</Text>
+        <TouchableOpacity
+          onPress={handleDelete}
+          className="p-1"
+          activeOpacity={0.7}
+        >
+          <Text className="text-red-500 text-sm">
+            {t("lockboxDetail.delete")}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -265,7 +258,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
         <View
           className="bg-white dark:bg-gray-800 rounded-2xl p-5 mb-4"
           style={{
-            shadowColor: '#000',
+            shadowColor: "#000",
             shadowOffset: { width: 0, height: 1 },
             shadowOpacity: 0.06,
             shadowRadius: 4,
@@ -285,11 +278,11 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
           {countdown && countdown.total > 0 && (
             <View className="items-center py-4">
               <Text className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                {status === 'unlocking'
-                  ? t('lockboxDetail.unlockIn')
-                  : status === 'scheduled'
-                    ? t('lockboxDetail.scheduledIn')
-                    : t('lockboxDetail.relockIn')}
+                {status === "unlocking"
+                  ? t("lockboxDetail.unlockIn")
+                  : status === "scheduled"
+                    ? t("lockboxDetail.scheduledIn")
+                    : t("lockboxDetail.relockIn")}
               </Text>
               <Text className="text-3xl font-bold font-mono text-gray-900 dark:text-white">
                 {formatTimeRemaining(countdown)}
@@ -302,7 +295,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
             {lockbox.category && (
               <View className="flex-row justify-between">
                 <Text className="text-xs text-gray-500 dark:text-gray-400">
-                  {t('lockboxDetail.category')}
+                  {t("lockboxDetail.category")}
                 </Text>
                 <Text className="text-xs text-gray-700 dark:text-gray-300">
                   {t(`category.${lockbox.category}`) || lockbox.category}
@@ -311,7 +304,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
             )}
             <View className="flex-row justify-between">
               <Text className="text-xs text-gray-500 dark:text-gray-400">
-                {t('lockboxDetail.unlockDelay')}
+                {t("lockboxDetail.unlockDelay")}
               </Text>
               <Text className="text-xs text-gray-700 dark:text-gray-300">
                 {formatDelay(lockbox.unlock_delay_seconds)}
@@ -319,7 +312,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
             </View>
             <View className="flex-row justify-between">
               <Text className="text-xs text-gray-500 dark:text-gray-400">
-                {t('lockboxDetail.relockDelay')}
+                {t("lockboxDetail.relockDelay")}
               </Text>
               <Text className="text-xs text-gray-700 dark:text-gray-300">
                 {formatDelay(lockbox.relock_delay_seconds)}
@@ -328,7 +321,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
             {lockbox.penalty_enabled && (
               <View className="bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-1.5 mt-1">
                 <Text className="text-xs text-amber-700 dark:text-amber-300">
-                  {t('lockboxDetail.penaltyBadge', {
+                  {t("lockboxDetail.penaltyBadge", {
                     penalty: formatDelay(lockbox.penalty_seconds),
                   })}
                 </Text>
@@ -338,11 +331,11 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
         </View>
 
         {/* Content (when unlocked) */}
-        {status === 'unlocked' && (
+        {status === "unlocked" && (
           <View
             className="bg-white dark:bg-gray-800 rounded-2xl p-5 mb-4"
             style={{
-              shadowColor: '#000',
+              shadowColor: "#000",
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: 0.06,
               shadowRadius: 4,
@@ -351,7 +344,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
           >
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                {t('lockboxDetail.content')}
+                {t("lockboxDetail.content")}
               </Text>
               <View className="flex-row gap-2">
                 <TouchableOpacity
@@ -361,8 +354,8 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
                 >
                   <Text className="text-xs text-gray-600 dark:text-gray-400">
                     {isContentVisible
-                      ? t('lockboxDetail.hide')
-                      : t('lockboxDetail.show')}
+                      ? t("lockboxDetail.hide")
+                      : t("lockboxDetail.show")}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -371,7 +364,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
                   activeOpacity={0.7}
                 >
                   <Text className="text-xs text-primary-700 dark:text-primary-300">
-                    {t('lockboxDetail.copy')}
+                    {t("lockboxDetail.copy")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -388,7 +381,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
             ) : (
               <View className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4">
                 <Text className="text-sm text-gray-400 text-center">
-                  {'•'.repeat(24)}
+                  {"•".repeat(24)}
                 </Text>
               </View>
             )}
@@ -397,19 +390,19 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
 
         {/* Action Buttons */}
         <View className="gap-3 mb-4">
-          {status === 'locked' && (
+          {status === "locked" && (
             <TouchableOpacity
               className="bg-primary-600 rounded-xl py-4 items-center"
               onPress={handleUnlock}
               activeOpacity={0.7}
             >
               <Text className="text-white font-semibold text-base">
-                {t('lockboxDetail.unlock')}
+                {t("lockboxDetail.unlock")}
               </Text>
             </TouchableOpacity>
           )}
 
-          {(status === 'unlocking' || status === 'scheduled') && (
+          {(status === "unlocking" || status === "scheduled") && (
             <>
               <TouchableOpacity
                 className="bg-red-500 rounded-xl py-4 items-center"
@@ -417,9 +410,9 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
                 activeOpacity={0.7}
               >
                 <Text className="text-white font-semibold text-base">
-                  {status === 'scheduled'
-                    ? t('lockboxDetail.cancelScheduled')
-                    : t('lockboxDetail.cancelUnlock')}
+                  {status === "scheduled"
+                    ? t("lockboxDetail.cancelScheduled")
+                    : t("lockboxDetail.cancelUnlock")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -428,20 +421,20 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
                 activeOpacity={0.7}
               >
                 <Text className="text-gray-700 dark:text-gray-300 font-semibold text-base">
-                  {t('lockboxDetail.extendDelay')}
+                  {t("lockboxDetail.extendDelay")}
                 </Text>
               </TouchableOpacity>
             </>
           )}
 
-          {status === 'unlocked' && (
+          {status === "unlocked" && (
             <TouchableOpacity
               className="bg-gray-800 dark:bg-gray-200 rounded-xl py-4 items-center"
               onPress={handleRelock}
               activeOpacity={0.7}
             >
               <Text className="text-white dark:text-gray-900 font-semibold text-base">
-                {t('lockboxDetail.relockNow')}
+                {t("lockboxDetail.relockNow")}
               </Text>
             </TouchableOpacity>
           )}
@@ -449,11 +442,11 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
 
         {/* Advanced Section */}
         <TouchableOpacity
-          className="bg-white dark:bg-gray-800 rounded-2xl p-4 mb-4"
+          className="bg-white dark:bg-gray-800 rounded-2xl p-4 mb-4 flex-row items-center justify-between"
           onPress={() => setShowAdvanced(!showAdvanced)}
           activeOpacity={0.8}
           style={{
-            shadowColor: '#000',
+            shadowColor: "#000",
             shadowOffset: { width: 0, height: 1 },
             shadowOpacity: 0.06,
             shadowRadius: 4,
@@ -461,15 +454,20 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
           }}
         >
           <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            {showAdvanced ? '▼' : '▶'} {t('createLockbox.advancedOptions')}
+            {t("createLockbox.advancedOptions")}
           </Text>
+          <Ionicons 
+            name={showAdvanced ? "chevron-down" : "chevron-forward"} 
+            size={20} 
+            color="#9ca3af" 
+          />
         </TouchableOpacity>
 
         {showAdvanced && (
           <View
             className="bg-white dark:bg-gray-800 rounded-2xl p-5 mb-4 gap-4"
             style={{
-              shadowColor: '#000',
+              shadowColor: "#000",
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: 0.06,
               shadowRadius: 4,
@@ -480,28 +478,19 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
             {lockbox.panic_code_hash && (
               <View>
                 <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  {t('lockboxDetail.panicCode')}
+                  {t("lockboxDetail.panicCode")}
                 </Text>
                 {lockbox.panic_code_used ? (
                   <View className="flex-row items-center justify-between">
                     <Text className="text-xs text-gray-500">
-                      {t('lockboxDetail.panicCodeUsed')}
+                      {t("lockboxDetail.panicCodeUsed")}
                     </Text>
-                    <TouchableOpacity
-                      className="px-3 py-1.5 bg-primary-100 dark:bg-primary-900/30 rounded-lg"
-                      onPress={handleResetPanicCode}
-                      activeOpacity={0.7}
-                    >
-                      <Text className="text-xs text-primary-700 dark:text-primary-300">
-                        {t('lockboxDetail.resetPanicCode')}
-                      </Text>
-                    </TouchableOpacity>
                   </View>
                 ) : (
                   <View className="flex-row gap-2">
                     <TextInput
                       className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white"
-                      placeholder={t('lockboxDetail.panicCodePlaceholder')}
+                      placeholder={t("lockboxDetail.panicCodePlaceholder")}
                       placeholderTextColor="#9ca3af"
                       value={panicInput}
                       onChangeText={setPanicInput}
@@ -513,7 +502,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
                       activeOpacity={0.7}
                     >
                       <Text className="text-white text-xs font-semibold">
-                        {t('lockboxDetail.usePanicCode')}
+                        {t("lockboxDetail.usePanicCode")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -524,11 +513,11 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
             {/* Access Log */}
             <View>
               <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                {t('lockboxDetail.accessLog')}
+                {t("lockboxDetail.accessLog")}
               </Text>
               {accessLog.length === 0 ? (
                 <Text className="text-xs text-gray-400">
-                  {t('lockboxDetail.accessLogEmpty')}
+                  {t("lockboxDetail.accessLogEmpty")}
                 </Text>
               ) : (
                 <View className="gap-1.5">
@@ -538,7 +527,8 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
                       className="flex-row justify-between items-center py-1"
                     >
                       <Text className="text-xs text-gray-600 dark:text-gray-400">
-                        {t(`accessLog.${entry.event_type}` as string) || entry.event_type}
+                        {t(`accessLog.${entry.event_type}` as string) ||
+                          entry.event_type}
                       </Text>
                       <Text className="text-xs text-gray-400">
                         {new Date(entry.timestamp).toLocaleString()}
@@ -571,7 +561,9 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
         currentDelaySeconds={lockbox.unlock_delay_seconds}
         onConfirm={async (additionalSeconds) => {
           setShowExtendDelay(false);
-          await useLockboxStore.getState().extendUnlockDelay(lockbox.id, additionalSeconds);
+          await useLockboxStore
+            .getState()
+            .extendUnlockDelay(lockbox.id, additionalSeconds);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }}
         onCancel={() => setShowExtendDelay(false)}

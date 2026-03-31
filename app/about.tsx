@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
+import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "../src/i18n";
 
 const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
@@ -212,9 +213,11 @@ export default function AboutScreen() {
             <Text className="flex-1 text-sm font-medium text-gray-700 dark:text-gray-300">
               {t("about.crypto")}
             </Text>
-            <Text className="text-xs text-gray-400">
-              {showCrypto ? "▲" : "▼"}
-            </Text>
+            <Ionicons 
+              name={showCrypto ? "chevron-up" : "chevron-down"} 
+              size={16} 
+              color="#9ca3af" 
+            />
           </TouchableOpacity>
 
           {showCrypto && (
