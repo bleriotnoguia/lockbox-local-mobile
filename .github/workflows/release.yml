@@ -48,7 +48,7 @@ jobs:
           fi
           echo "Downloading APK from: $BUILD_URL"
           mkdir -p artifacts
-          curl -fL "$BUILD_URL" -o artifacts/lockbox-local.apk
+          curl -fL "$BUILD_URL" -o artifacts/lockbox-local-${{ github.ref_name }}.apk
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
@@ -56,7 +56,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: artifacts/lockbox-local.apk
+          path: artifacts/lockbox-local-${{ github.ref_name }}.apk
 
   build-ios:
     name: Build iOS IPA
@@ -95,7 +95,7 @@ jobs:
           fi
           echo "Downloading simulator build from: $BUILD_URL"
           mkdir -p artifacts
-          curl -fL "$BUILD_URL" -o artifacts/lockbox-local-simulator.tar.gz
+          curl -fL "$BUILD_URL" -o artifacts/lockbox-local-simulator-${{ github.ref_name }}.tar.gz
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
@@ -103,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ios-simulator
-          path: artifacts/lockbox-local-simulator.tar.gz
+          path: artifacts/lockbox-local-simulator-${{ github.ref_name }}.tar.gz
 
   release:
     name: Create GitHub Release
