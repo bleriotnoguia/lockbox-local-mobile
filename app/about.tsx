@@ -15,7 +15,7 @@ import { useTranslation } from "../src/i18n";
 
 const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
 const GITHUB_URL = "https://github.com/bleriotnoguia/lockbox-local-mobile";
-const BUG_URL = "https://github.com/bleriotnoguia/lockbox-local/issues";
+const BUG_URL = "https://github.com/bleriotnoguia/lockbox-local-mobile/issues";
 const BUY_ME_COFFEE_URL = "https://ko-fi.com/bleriotnoguia";
 const X_URL = "https://x.com/bleriotnoguia";
 const SUPPORT_EMAIL = "contact@bleriotnoguia.com";
