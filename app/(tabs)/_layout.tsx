@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text } from 'react-native';
+import { useColorScheme } from 'nativewind';
 import { useTranslation } from '../../src/i18n';
 import { useThemeStore } from '../../src/store';
 
@@ -22,8 +23,11 @@ function TabIcon({
 
 export default function TabLayout() {
   const { t } = useTranslation();
-  const effectiveTheme = useThemeStore((s) => s.getEffectiveTheme());
-  const isDark = effectiveTheme === 'dark';
+  const theme = useThemeStore((s) => s.theme);
+  const { colorScheme } = useColorScheme();
+  // Use nativewind's colorScheme for 'system' mode so it reacts to OS changes
+  const isDark =
+    theme === 'dark' || (theme === 'system' && colorScheme === 'dark');
 
   return (
     <Tabs

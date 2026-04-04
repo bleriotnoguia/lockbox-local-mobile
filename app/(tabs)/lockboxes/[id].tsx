@@ -225,12 +225,10 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
       <View className="flex-row items-center px-4 py-3">
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mr-3 p-1"
+          className="mr-2 p-1 -ml-1"
           activeOpacity={0.7}
         >
-          <Text className="text-primary-600 dark:text-primary-400 text-base">
-            ← Back
-          </Text>
+          <Ionicons name="chevron-back" size={28} color="#6366f1" />
         </TouchableOpacity>
         <Text
           className="text-lg font-bold text-gray-900 dark:text-white flex-1"

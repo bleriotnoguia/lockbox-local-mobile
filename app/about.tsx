@@ -81,15 +81,14 @@ export default function AboutScreen() {
             else router.replace("/(tabs)/lockboxes");
           }}
           activeOpacity={0.7}
+          className="p-1 -ml-1"
         >
-          <Text className="text-primary-600 dark:text-primary-400 text-base">
-            {t("common.close")}
-          </Text>
+          <Ionicons name="chevron-back" size={28} color="#6366f1" />
         </TouchableOpacity>
         <Text className="text-lg font-bold text-gray-900 dark:text-white">
           {t("about.title")}
         </Text>
-        <View className="w-14" />
+        <View className="w-8" />
       </View>
 
       <ScrollView
@@ -154,7 +153,7 @@ export default function AboutScreen() {
               <Text className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 {t("about.github")}
               </Text>
-              <Text className="text-xs text-gray-400">↗</Text>
+              <Ionicons name="open-outline" size={12} color="#9ca3af" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -165,7 +164,7 @@ export default function AboutScreen() {
               <Text className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 {t("about.x")}
               </Text>
-              <Text className="text-xs text-gray-400">↗</Text>
+              <Ionicons name="open-outline" size={12} color="#9ca3af" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -176,7 +175,7 @@ export default function AboutScreen() {
               <Text className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 {t("about.reportBug")}
               </Text>
-              <Text className="text-xs text-gray-400">↗</Text>
+              <Ionicons name="open-outline" size={12} color="#9ca3af" />
             </TouchableOpacity>
           </View>
         </View>
@@ -199,9 +198,7 @@ export default function AboutScreen() {
             <Text className="flex-1 text-sm font-medium text-yellow-800 dark:text-yellow-300">
               {t("about.buyMeCoffee")}
             </Text>
-            <Text className="text-xs text-yellow-600 dark:text-yellow-400">
-              ↗
-            </Text>
+            <Ionicons name="open-outline" size={13} color="#ca8a04" />
           </TouchableOpacity>
 
           <TouchableOpacity

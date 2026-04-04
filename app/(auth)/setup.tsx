@@ -8,8 +8,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../../src/store';
@@ -25,6 +27,8 @@ export default function SetupScreen() {
   const [error, setError] = useState<string | null>(null);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [enableBiometric, setEnableBiometric] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -34,7 +38,7 @@ export default function SetupScreen() {
     })();
   }, []);
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     setError(null);
 
     if (!password) {
@@ -50,17 +54,107 @@ export default function SetupScreen() {
       return;
     }
 
-    await setMasterPassword(password);
+    // Show confirmation modal before actually creating
+    setConfirmed(false);
+    setShowConfirm(true);
+  };
 
+  const handleConfirmCreate = async () => {
+    setShowConfirm(false);
+    await setMasterPassword(password);
     await SecureStore.setItemAsync(
       BIOMETRIC_ENABLED_KEY,
       enableBiometric ? 'true' : 'false'
     );
-
     router.replace('/(tabs)/lockboxes');
   };
 
   return (
+    <>
+      {/* Confirmation modal */}
+      <Modal
+        visible={showConfirm}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowConfirm(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-center px-6">
+          <View className="bg-white dark:bg-gray-800 rounded-3xl p-6">
+            {/* Icon + title */}
+            <View className="items-center mb-4">
+              <View className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/40 items-center justify-center mb-3">
+                <Ionicons name="warning-outline" size={28} color="#d97706" />
+              </View>
+              <Text className="text-lg font-bold text-gray-900 dark:text-white text-center">
+                {t('login.confirmSetupTitle')}
+              </Text>
+            </View>
+
+            {/* Warning */}
+            <View className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3.5 mb-3">
+              <Text className="text-sm text-red-700 dark:text-red-300 leading-relaxed">
+                {t('login.confirmSetupWarning')}
+              </Text>
+            </View>
+
+            {/* Checkbox */}
+            <TouchableOpacity
+              onPress={() => setConfirmed(!confirmed)}
+              activeOpacity={0.7}
+              className="flex-row items-center gap-3 mb-6"
+            >
+              <View
+                className={`w-6 h-6 rounded-md items-center justify-center ${
+                  confirmed
+                    ? 'bg-primary-600'
+                    : 'border-2 border-gray-300 dark:border-gray-600'
+                }`}
+              >
+                {confirmed && (
+                  <Ionicons name="checkmark" size={14} color="white" />
+                )}
+              </View>
+              <Text className="flex-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t('login.confirmSetupCheckbox')}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Buttons */}
+            <View className="gap-2">
+              <TouchableOpacity
+                onPress={handleConfirmCreate}
+                disabled={!confirmed || isLoading}
+                activeOpacity={0.8}
+                className={`py-4 rounded-xl items-center ${
+                  confirmed && !isLoading
+                    ? 'bg-primary-600'
+                    : 'bg-gray-200 dark:bg-gray-700'
+                }`}
+              >
+                <Text
+                  className={`font-semibold text-base ${
+                    confirmed && !isLoading
+                      ? 'text-white'
+                      : 'text-gray-400 dark:text-gray-500'
+                  }`}
+                >
+                  {t('login.confirmSetupButton')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowConfirm(false)}
+                activeOpacity={0.7}
+                className="py-3 items-center"
+              >
+                <Text className="text-sm text-gray-500">
+                  {t('common.cancel')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       className="flex-1 bg-white dark:bg-gray-950"
@@ -161,5 +255,6 @@ export default function SetupScreen() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </>
   );
 }

@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useThemeStore, type ThemeMode } from '../src/store';
 import { useTranslation, useLocaleStore, type Locale } from '../src/i18n';
 import { useExportImport } from '../src/hooks';
@@ -117,15 +118,14 @@ export default function SettingsScreen() {
             else router.replace('/(tabs)/lockboxes');
           }}
           activeOpacity={0.7}
+          className="p-1 -ml-1"
         >
-          <Text className="text-primary-600 dark:text-primary-400 text-base">
-            {t('common.close')}
-          </Text>
+          <Ionicons name="chevron-back" size={28} color="#6366f1" />
         </TouchableOpacity>
         <Text className="text-lg font-bold text-gray-900 dark:text-white">
           {t('settings.title')}
         </Text>
-        <View className="w-14" />
+        <View className="w-8" />
       </View>
 
       <ScrollView
@@ -187,29 +187,39 @@ export default function SettingsScreen() {
           ))}
         </View>
 
-        {/* Biometric */}
+        {/* Security — biometric only when hardware is available */}
         {biometricAvailable && (
-          <View className="bg-white dark:bg-gray-800 rounded-2xl p-4 flex-row items-center justify-between mb-6">
-            <View className="flex-1 mr-3">
-              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t('settings.biometric')}
-              </Text>
-              <Text className="text-xs text-gray-500 mt-0.5">
-                {t('settings.biometricHint')}
-              </Text>
+          <>
+            <Text className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+              {t('settings.security')}
+            </Text>
+            <View className="bg-white dark:bg-gray-800 rounded-2xl p-4 flex-row items-center justify-between mb-6">
+              <View className="flex-1 mr-3">
+                <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {t('settings.biometric')}
+                </Text>
+                <Text className="text-xs text-gray-500 mt-0.5">
+                  {t('settings.biometricHint')}
+                </Text>
+              </View>
+              <Switch
+                value={biometricEnabled}
+                onValueChange={toggleBiometric}
+                trackColor={{ true: '#6366f1' }}
+              />
             </View>
-            <Switch
-              value={biometricEnabled}
-              onValueChange={toggleBiometric}
-              trackColor={{ true: '#6366f1' }}
-            />
-          </View>
+          </>
         )}
 
         {/* Import/Export */}
         <Text className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
           Data
         </Text>
+        <View className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-3.5 mb-3">
+          <Text className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+            ℹ️ {t('settings.importExportNote')}
+          </Text>
+        </View>
         <View className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden mb-6">
           <TouchableOpacity
             className="p-4 border-b border-gray-100 dark:border-gray-700"

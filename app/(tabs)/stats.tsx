@@ -46,14 +46,34 @@ function computeStats(entries: AccessLogEntry[]): Stats {
 function computeStreak(entries: AccessLogEntry[]): number {
   const completedTimestamps = entries
     .filter((e) => e.event_type === 'unlock_completed')
-    .map((e) => e.timestamp)
-    .sort((a, b) => b - a);
+    .map((e) => e.timestamp);
 
   if (completedTimestamps.length === 0) return 0;
 
-  const now = Date.now();
-  const lastAccess = completedTimestamps[0];
-  return Math.floor((now - lastAccess) / (1000 * 60 * 60 * 24));
+  const toDateKey = (ts: number) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+
+  const accessDays = new Set(completedTimestamps.map(toDateKey));
+  const earliestTs = completedTimestamps.reduce(
+    (min, ts) => Math.min(min, ts),
+    Infinity
+  );
+
+  // Count consecutive calendar days without any unlock_completed event,
+  // going backwards from today until we hit a day that had one.
+  const current = new Date();
+  current.setHours(0, 0, 0, 0);
+  let streak = 0;
+
+  while (current.getTime() >= earliestTs) {
+    if (accessDays.has(toDateKey(current.getTime()))) break;
+    streak++;
+    current.setDate(current.getDate() - 1);
+  }
+
+  return streak;
 }
 
 function StatCard({
@@ -220,7 +240,7 @@ export default function StatsScreen() {
               {t('stats.streakTitle')}
             </Text>
             <Text className="text-3xl font-bold text-primary-600 dark:text-primary-400">
-              {t('stats.streakDays', { days: streakDays })}
+              {t(streakDays === 1 ? 'stats.streakDay' : 'stats.streakDays', { days: streakDays })}
             </Text>
           </View>
         </ScrollView>

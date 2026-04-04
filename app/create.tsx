@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Modal,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,6 +21,9 @@ import { useLockboxStore } from "../src/store";
 import { useTranslation } from "../src/i18n";
 import { CATEGORIES, DELAY_PRESETS } from "../src/constants";
 import { serializeTags } from "../src/types";
+import { PasswordGenerator } from "../src/components";
+
+const SAVE_HINT_KEY = "lockbox_save_hint_dismissed";
 
 type TimeUnit = "seconds" | "minutes" | "hours" | "days";
 
@@ -64,6 +69,16 @@ export default function CreateScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerMode, setDatePickerMode] = useState<"date" | "time">("date");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPasswordGenerator, setShowPasswordGenerator] = useState(false);
+  const [showSaveAlert, setShowSaveAlert] = useState(false);
+  const [dontShowSaveAlert, setDontShowSaveAlert] = useState(false);
+  const [saveHintDismissed, setSaveHintDismissed] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(SAVE_HINT_KEY).then((v) => {
+      setSaveHintDismissed(v === "true");
+    });
+  }, []);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();
@@ -77,16 +92,19 @@ export default function CreateScreen() {
     setTags(tags.filter((t) => t !== tag));
   };
 
-  const handleCreate = async () => {
+  const validate = (): {
+    unlockNum: number;
+    relockNum: number;
+    penaltyNum: number;
+  } | null => {
     if (!name.trim()) {
       Alert.alert("", t("createLockbox.nameRequired"));
-      return;
+      return null;
     }
     if (!content.trim()) {
       Alert.alert("", t("createLockbox.contentRequired"));
-      return;
+      return null;
     }
-
     const unlockNum = Number(unlockValue);
     if (isNaN(unlockNum) || unlockNum <= 0) {
       Alert.alert(
@@ -94,9 +112,8 @@ export default function CreateScreen() {
         t("createLockbox.invalidUnlockDelay") ||
           "Veuillez entrer un délai de déverrouillage valide (> 0).",
       );
-      return;
+      return null;
     }
-
     const relockNum = Number(relockValue);
     if (isNaN(relockNum) || relockNum <= 0) {
       Alert.alert(
@@ -104,9 +121,8 @@ export default function CreateScreen() {
         t("createLockbox.invalidRelockDelay") ||
           "Veuillez entrer un délai de reverrouillage valide (> 0).",
       );
-      return;
+      return null;
     }
-
     let penaltyNum = 0;
     if (penaltyEnabled) {
       penaltyNum = Number(penaltyValue);
@@ -116,14 +132,19 @@ export default function CreateScreen() {
           t("createLockbox.invalidPenaltyDelay") ||
             "Veuillez entrer un délai de pénalité valide (> 0).",
         );
-        return;
+        return null;
       }
     }
+    return { unlockNum, relockNum, penaltyNum };
+  };
 
+  const performSave = async (
+    unlockNum: number,
+    relockNum: number,
+    penaltyNum: number
+  ) => {
     setIsSubmitting(true);
-    
-    // Use setTimeout to allow React Native to render the loading spinner
-    // before blocking the thread with heavy cryptographic operations
+    // Allow React Native to render the spinner before the crypto work blocks the thread
     setTimeout(async () => {
       try {
         await createLockbox({
@@ -145,7 +166,6 @@ export default function CreateScreen() {
             : undefined,
           tags: serializeTags(tags),
         });
-
         if (router.canDismiss()) router.dismiss();
         else router.replace("/(tabs)/lockboxes");
       } catch (e) {
@@ -156,8 +176,97 @@ export default function CreateScreen() {
     }, 50);
   };
 
+  const handleCreate = () => {
+    const validated = validate();
+    if (!validated) return;
+    const { unlockNum, relockNum, penaltyNum } = validated;
+
+    if (!saveHintDismissed) {
+      // Store the validated numbers in state via a pending save closure
+      setShowSaveAlert(true);
+      // Keep the validated values accessible via closure in the confirm handler
+      pendingSaveRef.current = { unlockNum, relockNum, penaltyNum };
+    } else {
+      performSave(unlockNum, relockNum, penaltyNum);
+    }
+  };
+
+  const pendingSaveRef = React.useRef<{
+    unlockNum: number;
+    relockNum: number;
+    penaltyNum: number;
+  } | null>(null);
+
+  const handleConfirmSaveAlert = async () => {
+    if (dontShowSaveAlert) {
+      await AsyncStorage.setItem(SAVE_HINT_KEY, "true");
+      setSaveHintDismissed(true);
+    }
+    setShowSaveAlert(false);
+    if (pendingSaveRef.current) {
+      const { unlockNum, relockNum, penaltyNum } = pendingSaveRef.current;
+      pendingSaveRef.current = null;
+      performSave(unlockNum, relockNum, penaltyNum);
+    }
+  };
+
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-900">
+      {/* Save alert modal */}
+      <Modal
+        visible={showSaveAlert}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowSaveAlert(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-center px-6">
+          <View className="bg-white dark:bg-gray-800 rounded-3xl p-6">
+            <Text className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+              {t("createLockbox.savingAlertTitle")}
+            </Text>
+            <Text className="text-sm text-gray-600 dark:text-gray-400 mb-5">
+              {t("createLockbox.savingAlertBody")}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setDontShowSaveAlert(!dontShowSaveAlert)}
+              activeOpacity={0.7}
+              className="flex-row items-center gap-3 mb-5"
+            >
+              <View
+                className={`w-5 h-5 rounded items-center justify-center ${
+                  dontShowSaveAlert
+                    ? "bg-primary-600"
+                    : "border-2 border-gray-300 dark:border-gray-600"
+                }`}
+              >
+                {dontShowSaveAlert && (
+                  <Ionicons name="checkmark" size={12} color="white" />
+                )}
+              </View>
+              <Text className="text-sm text-gray-600 dark:text-gray-400 flex-1">
+                {t("createLockbox.savingAlertDontShow")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleConfirmSaveAlert}
+              activeOpacity={0.7}
+              className="bg-primary-600 rounded-xl py-3.5 items-center"
+            >
+              <Text className="text-white font-semibold text-sm">
+                {t("createLockbox.savingAlertConfirm")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Password generator modal */}
+      <PasswordGenerator
+        visible={showPasswordGenerator}
+        onClose={() => setShowPasswordGenerator(false)}
+        onUsePassword={(pwd) => setContent(pwd)}
+      />
+
       {/* Header */}
       <View
         className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700"
@@ -169,8 +278,11 @@ export default function CreateScreen() {
             else router.replace("/(tabs)/lockboxes");
           }}
           activeOpacity={0.7}
+          disabled={isSubmitting}
         >
-          <Text className="text-primary-600 dark:text-primary-400 text-base">
+          <Text
+            className={`text-base ${isSubmitting ? "text-gray-400" : "text-primary-600 dark:text-primary-400"}`}
+          >
             {t("createLockbox.cancel")}
           </Text>
         </TouchableOpacity>
@@ -185,13 +297,7 @@ export default function CreateScreen() {
           {isSubmitting ? (
             <ActivityIndicator size="small" color="#9ca3af" />
           ) : (
-            <Text
-              className={`text-base font-semibold ${
-                isSubmitting
-                  ? "text-gray-400"
-                  : "text-primary-600 dark:text-primary-400"
-              }`}
-            >
+            <Text className="text-base font-semibold text-primary-600 dark:text-primary-400">
               {t("createLockbox.create")}
             </Text>
           )}
@@ -221,14 +327,28 @@ export default function CreateScreen() {
             placeholderTextColor="#9ca3af"
             value={name}
             onChangeText={setName}
+            editable={!isSubmitting}
           />
         </View>
 
         {/* Content */}
         <View className="mb-4">
-          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            {t("createLockbox.content")}
-          </Text>
+          <View className="flex-row items-center justify-between mb-1.5">
+            <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t("createLockbox.content")}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setShowPasswordGenerator(true)}
+              activeOpacity={0.7}
+              disabled={isSubmitting}
+              className="flex-row items-center gap-1 px-2.5 py-1 bg-primary-50 dark:bg-primary-900/30 rounded-lg"
+            >
+              <Ionicons name="key-outline" size={13} color="#6366f1" />
+              <Text className="text-xs font-medium text-primary-600 dark:text-primary-400">
+                {t("passwordGenerator.title")}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <TextInput
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-base text-gray-900 dark:text-white min-h-[100px]"
             placeholder={t("createLockbox.contentPlaceholder")}
@@ -238,6 +358,7 @@ export default function CreateScreen() {
             multiline
             textAlignVertical="top"
             secureTextEntry
+            editable={!isSubmitting}
           />
         </View>
 
@@ -330,6 +451,7 @@ export default function CreateScreen() {
             }}
             onSubmitEditing={handleAddTag}
             returnKeyType="done"
+            editable={!isSubmitting}
           />
         </View>
 
@@ -341,6 +463,7 @@ export default function CreateScreen() {
           unit={unlockUnit}
           onValueChange={setUnlockValue}
           onUnitChange={setUnlockUnit}
+          disabled={isSubmitting}
         />
 
         {/* Relock Delay */}
@@ -351,6 +474,7 @@ export default function CreateScreen() {
           unit={relockUnit}
           onValueChange={setRelockValue}
           onUnitChange={setRelockUnit}
+          disabled={isSubmitting}
         />
 
         {/* Advanced Options */}
@@ -358,6 +482,7 @@ export default function CreateScreen() {
           className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4 flex-row items-center justify-between"
           onPress={() => setShowAdvanced(!showAdvanced)}
           activeOpacity={0.8}
+          disabled={isSubmitting}
         >
           <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             {t("createLockbox.advancedOptions")}
@@ -386,6 +511,7 @@ export default function CreateScreen() {
                   value={reflectionEnabled}
                   onValueChange={setReflectionEnabled}
                   trackColor={{ true: "#6366f1" }}
+                  disabled={isSubmitting}
                 />
               </View>
               {reflectionEnabled && (
@@ -398,6 +524,7 @@ export default function CreateScreen() {
                     placeholderTextColor="#9ca3af"
                     value={reflectionMessage}
                     onChangeText={setReflectionMessage}
+                    editable={!isSubmitting}
                   />
                   <TextInput
                     className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white min-h-[80px]"
@@ -409,6 +536,7 @@ export default function CreateScreen() {
                     onChangeText={setReflectionChecklist}
                     multiline
                     textAlignVertical="top"
+                    editable={!isSubmitting}
                   />
                 </View>
               )}
@@ -429,6 +557,7 @@ export default function CreateScreen() {
                   value={penaltyEnabled}
                   onValueChange={setPenaltyEnabled}
                   trackColor={{ true: "#6366f1" }}
+                  disabled={isSubmitting}
                 />
               </View>
               {penaltyEnabled && (
@@ -440,6 +569,7 @@ export default function CreateScreen() {
                     unit={penaltyUnit}
                     onValueChange={setPenaltyValue}
                     onUnitChange={setPenaltyUnit}
+                    disabled={isSubmitting}
                   />
                 </View>
               )}
@@ -460,6 +590,7 @@ export default function CreateScreen() {
                 value={panicCode}
                 onChangeText={setPanicCode}
                 secureTextEntry
+                editable={!isSubmitting}
               />
             </View>
 
@@ -478,6 +609,7 @@ export default function CreateScreen() {
                   value={scheduledEnabled}
                   onValueChange={setScheduledEnabled}
                   trackColor={{ true: "#6366f1" }}
+                  disabled={isSubmitting}
                 />
               </View>
               {scheduledEnabled && (
@@ -560,6 +692,7 @@ function DelayPicker({
   unit,
   onValueChange,
   onUnitChange,
+  disabled = false,
 }: {
   label: string;
   hint: string;
@@ -567,6 +700,7 @@ function DelayPicker({
   unit: TimeUnit;
   onValueChange: (v: string) => void;
   onUnitChange: (u: TimeUnit) => void;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const units: TimeUnit[] = ["seconds", "minutes", "hours", "days"];
@@ -586,6 +720,7 @@ function DelayPicker({
           onChangeText={onValueChange}
           keyboardType="numeric"
           maxLength={4}
+          editable={!disabled}
         />
         <View className="flex-row flex-1 gap-1">
           {units.map((u) => (
@@ -599,7 +734,6 @@ function DelayPicker({
               onPress={() => {
                 if (unit !== u) {
                   onUnitChange(u);
-                  // Reset value to the first preset of the new unit
                   const firstPreset = DELAY_PRESETS[u][0];
                   if (firstPreset) {
                     onValueChange(String(firstPreset));
@@ -609,6 +743,7 @@ function DelayPicker({
                 }
               }}
               activeOpacity={0.7}
+              disabled={disabled}
             >
               <Text
                 className={`text-[10px] font-medium ${
@@ -635,6 +770,7 @@ function DelayPicker({
             className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-full"
             onPress={() => onValueChange(String(preset))}
             activeOpacity={0.7}
+            disabled={disabled}
           >
             <Text className="text-xs text-gray-600 dark:text-gray-400">
               {preset}
