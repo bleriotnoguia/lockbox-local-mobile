@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lockbox Local",
     "slug": "lockbox-local",
-    "version": "1.4.0",
+    "version": "1.4.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
