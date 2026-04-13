@@ -41,17 +41,16 @@ export interface UpdateLockboxInput {
   id: number;
   name?: string;
   content?: string;
-  category?: string;
+  category?: string | null;
   unlock_delay_seconds?: number;
   relock_delay_seconds?: number;
   reflection_enabled?: boolean;
-  reflection_message?: string;
-  reflection_checklist?: string;
+  reflection_message?: string | null;
+  reflection_checklist?: string | null;
   penalty_enabled?: boolean;
   penalty_seconds?: number;
-  panic_code?: string;
-  scheduled_unlock_at?: number;
-  tags?: string;
+  scheduled_unlock_at?: number | null;
+  tags?: string | null;
 }
 
 export interface AccessLogEntry {
@@ -62,7 +61,8 @@ export interface AccessLogEntry {
     | 'unlock_completed'
     | 'unlock_cancelled'
     | 'panic_used'
-    | 'extend_delay';
+    | 'extend_delay'
+    | 'content_edited';
   timestamp: number;
 }
 

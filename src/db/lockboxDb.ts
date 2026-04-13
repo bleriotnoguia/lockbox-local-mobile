@@ -129,12 +129,12 @@ export interface UpdateLockboxDbInput {
   id: number;
   name?: string;
   content?: string;
-  category?: string;
+  category?: string | null;
   unlock_delay_seconds?: number;
   relock_delay_seconds?: number;
   reflection_enabled?: boolean;
-  reflection_message?: string;
-  reflection_checklist?: string;
+  reflection_message?: string | null;
+  reflection_checklist?: string | null;
   penalty_enabled?: boolean;
   penalty_seconds?: number;
   panic_code_hash?: string | null;
@@ -161,12 +161,16 @@ export async function updateLockbox(
     [
       input.name ?? current.name,
       input.content ?? current.content,
-      input.category ?? current.category,
+      input.category !== undefined ? input.category : current.category,
       input.unlock_delay_seconds ?? current.unlock_delay_seconds,
       input.relock_delay_seconds ?? current.relock_delay_seconds,
       (input.reflection_enabled ?? current.reflection_enabled) ? 1 : 0,
-      input.reflection_message ?? current.reflection_message,
-      input.reflection_checklist ?? current.reflection_checklist,
+      input.reflection_message !== undefined
+        ? input.reflection_message
+        : current.reflection_message,
+      input.reflection_checklist !== undefined
+        ? input.reflection_checklist
+        : current.reflection_checklist,
       (input.penalty_enabled ?? current.penalty_enabled) ? 1 : 0,
       input.penalty_seconds ?? current.penalty_seconds,
       input.panic_code_hash !== undefined
@@ -323,6 +327,31 @@ export async function resetPanicCode(
   return result;
 }
 
+export async function postponeScheduledUnlock(
+  id: number,
+  newTimestamp: number
+): Promise<Lockbox> {
+  const now = Date.now();
+  if (newTimestamp <= now) throw new Error('New timestamp must be in the future');
+
+  const current = await getLockbox(id);
+  if (!current) throw new Error('Lockbox not found');
+  if (!current.scheduled_unlock_at)
+    throw new Error('No scheduled unlock to postpone');
+  if (newTimestamp <= current.scheduled_unlock_at)
+    throw new Error('New timestamp must be later than current scheduled time');
+
+  const db = await getDatabase();
+  await db.runAsync(
+    'UPDATE lockboxes SET scheduled_unlock_at = ?, updated_at = ? WHERE id = ?',
+    [newTimestamp, now, id]
+  );
+
+  const result = await getLockbox(id);
+  if (!result) throw new Error('Lockbox not found');
+  return result;
+}
+
 export async function checkAndUpdateStates(): Promise<Lockbox[]> {
   const db = await getDatabase();
   const now = Date.now();
@@ -373,7 +402,7 @@ export async function checkAndUpdateStates(): Promise<Lockbox[]> {
   return getAllLockboxes();
 }
 
-async function logAccessEvent(
+export async function logAccessEvent(
   lockboxId: number,
   eventType: string
 ): Promise<void> {

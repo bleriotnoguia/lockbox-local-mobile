@@ -237,6 +237,13 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
           {lockbox.name}
         </Text>
         <TouchableOpacity
+          onPress={() => router.push(`/edit/${lockbox.id}`)}
+          className="p-1 mr-3"
+          activeOpacity={0.7}
+        >
+          <Ionicons name="create-outline" size={22} color="#6366f1" />
+        </TouchableOpacity>
+        <TouchableOpacity
           onPress={handleDelete}
           className="p-1"
           activeOpacity={0.7}

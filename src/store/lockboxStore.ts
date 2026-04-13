@@ -3,8 +3,10 @@ import { useMemo } from 'react';
 import * as db from '../db';
 import { encrypt, decrypt, decryptAsync, hashPassword } from '../crypto';
 import { useAuthStore } from './authStore';
-import type { Lockbox, CreateLockboxInput, AccessLogEntry } from '../types';
+import type { Lockbox, CreateLockboxInput, UpdateLockboxInput, AccessLogEntry } from '../types';
 import { parseTags } from '../types';
+import { getLockboxStatus } from '../hooks/useLockboxStatus';
+import { getLockboxEditPermissions } from '../utils/lockboxPermissions';
 import { UNCATEGORIZED_FILTER } from '../constants';
 
 interface LockboxState {
@@ -21,8 +23,9 @@ interface LockboxState {
   createLockbox: (input: CreateLockboxInput) => Promise<Lockbox>;
   updateLockbox: (
     id: number,
-    updates: Partial<CreateLockboxInput>
+    updates: Omit<Partial<UpdateLockboxInput>, 'id'>
   ) => Promise<Lockbox>;
+  postponeScheduledUnlock: (id: number, newTimestamp: number) => Promise<Lockbox>;
   deleteLockbox: (id: number) => Promise<void>;
   unlockLockbox: (id: number) => Promise<Lockbox>;
   cancelUnlock: (id: number) => Promise<Lockbox>;
@@ -130,19 +133,51 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
 
   updateLockbox: async (
     id: number,
-    updates: Partial<CreateLockboxInput>
+    updates: Omit<Partial<UpdateLockboxInput>, 'id'>
   ) => {
     set({ isLoading: true, error: null });
     try {
+      const { lockboxes } = get();
+      const current = lockboxes.find((lb) => lb.id === id);
+      if (current) {
+        const status = getLockboxStatus(current);
+        const perms = getLockboxEditPermissions(status);
+
+        if (updates.content !== undefined && !perms.canEditContent) {
+          throw new Error('Cannot edit content in current state');
+        }
+        if (
+          updates.unlock_delay_seconds !== undefined &&
+          updates.unlock_delay_seconds < current.unlock_delay_seconds &&
+          !perms.canReduceDelay
+        ) {
+          throw new Error('Cannot reduce unlock delay in current state');
+        }
+        if (
+          'scheduled_unlock_at' in updates &&
+          updates.scheduled_unlock_at !== current.scheduled_unlock_at &&
+          !perms.canManageSchedule
+        ) {
+          throw new Error('Cannot modify scheduled unlock in current state');
+        }
+      }
+
       const masterHash = useAuthStore.getState().getMasterHash();
+
+      let contentChanged = false;
+      if (updates.content !== undefined && current && masterHash) {
+        try {
+          const decrypted = await decryptAsync(current.content, masterHash);
+          contentChanged = decrypted !== updates.content;
+        } catch {
+          contentChanged = true;
+        }
+      }
+
       const encryptedContent =
         updates.content && masterHash
           ? encrypt(updates.content, masterHash)
           : updates.content;
-
-      const panicCodeHash = updates.panic_code
-        ? hashPassword(updates.panic_code)
-        : undefined;
 
       const lockbox = await db.updateLockbox({
         id,
@@ -156,10 +191,13 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
         reflection_checklist: updates.reflection_checklist,
         penalty_enabled: updates.penalty_enabled,
         penalty_seconds: updates.penalty_seconds,
-        panic_code_hash: panicCodeHash,
         scheduled_unlock_at: updates.scheduled_unlock_at,
         tags: updates.tags,
       });
+
+      if (contentChanged) {
+        await db.logAccessEvent(id, 'content_edited');
+      }
 
       set((state) => ({
         lockboxes: state.lockboxes.map((lb) =>
@@ -326,6 +364,24 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
           state.selectedLockbox?.id === id
             ? lockbox
             : state.selectedLockbox,
+      }));
+      return lockbox;
+    } catch (error) {
+      set({ error: String(error) });
+      throw error;
+    }
+  },
+
+  postponeScheduledUnlock: async (id: number, newTimestamp: number) => {
+    set({ error: null });
+    try {
+      const lockbox = await db.postponeScheduledUnlock(id, newTimestamp);
+      set((state) => ({
+        lockboxes: state.lockboxes.map((lb) =>
+          lb.id === id ? lockbox : lb
+        ),
+        selectedLockbox:
+          state.selectedLockbox?.id === id ? lockbox : state.selectedLockbox,
       }));
       return lockbox;
     } catch (error) {
