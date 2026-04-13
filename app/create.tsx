@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   Modal,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,8 +22,6 @@ import { CATEGORIES } from "../src/constants";
 import { serializeTags } from "../src/types";
 import { PasswordGenerator, DelayPicker, delayToSeconds } from "../src/components";
 import type { TimeUnit } from "../src/components";
-
-const SAVE_HINT_KEY = "lockbox_save_hint_dismissed";
 
 export default function CreateScreen() {
   const { t } = useTranslation();
@@ -56,15 +53,6 @@ export default function CreateScreen() {
   const [datePickerMode, setDatePickerMode] = useState<"date" | "time">("date");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPasswordGenerator, setShowPasswordGenerator] = useState(false);
-  const [showSaveAlert, setShowSaveAlert] = useState(false);
-  const [dontShowSaveAlert, setDontShowSaveAlert] = useState(false);
-  const [saveHintDismissed, setSaveHintDismissed] = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem(SAVE_HINT_KEY).then((v) => {
-      setSaveHintDismissed(v === "true");
-    });
-  }, []);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();
@@ -78,18 +66,14 @@ export default function CreateScreen() {
     setTags(tags.filter((t) => t !== tag));
   };
 
-  const validate = (): {
-    unlockNum: number;
-    relockNum: number;
-    penaltyNum: number;
-  } | null => {
+  const handleCreate = async () => {
     if (!name.trim()) {
       Alert.alert("", t("createLockbox.nameRequired"));
-      return null;
+      return;
     }
     if (!content.trim()) {
       Alert.alert("", t("createLockbox.contentRequired"));
-      return null;
+      return;
     }
     const unlockNum = Number(unlockValue);
     if (isNaN(unlockNum) || unlockNum <= 0) {
@@ -98,7 +82,7 @@ export default function CreateScreen() {
         t("createLockbox.invalidUnlockDelay") ||
           "Veuillez entrer un délai de déverrouillage valide (> 0).",
       );
-      return null;
+      return;
     }
     const relockNum = Number(relockValue);
     if (isNaN(relockNum) || relockNum <= 0) {
@@ -107,7 +91,7 @@ export default function CreateScreen() {
         t("createLockbox.invalidRelockDelay") ||
           "Veuillez entrer un délai de reverrouillage valide (> 0).",
       );
-      return null;
+      return;
     }
     let penaltyNum = 0;
     if (penaltyEnabled) {
@@ -118,17 +102,10 @@ export default function CreateScreen() {
           t("createLockbox.invalidPenaltyDelay") ||
             "Veuillez entrer un délai de pénalité valide (> 0).",
         );
-        return null;
+        return;
       }
     }
-    return { unlockNum, relockNum, penaltyNum };
-  };
 
-  const performSave = async (
-    unlockNum: number,
-    relockNum: number,
-    penaltyNum: number
-  ) => {
     setIsSubmitting(true);
     // Allow React Native to render the spinner before the crypto work blocks the thread
     setTimeout(async () => {
@@ -162,96 +139,29 @@ export default function CreateScreen() {
     }, 50);
   };
 
-  const handleCreate = () => {
-    const validated = validate();
-    if (!validated) return;
-    const { unlockNum, relockNum, penaltyNum } = validated;
-
-    if (!saveHintDismissed) {
-      // Store the validated numbers in state via a pending save closure
-      setShowSaveAlert(true);
-      // Keep the validated values accessible via closure in the confirm handler
-      pendingSaveRef.current = { unlockNum, relockNum, penaltyNum };
-    } else {
-      performSave(unlockNum, relockNum, penaltyNum);
-    }
-  };
-
-  const pendingSaveRef = React.useRef<{
-    unlockNum: number;
-    relockNum: number;
-    penaltyNum: number;
-  } | null>(null);
-
-  const handleConfirmSaveAlert = async () => {
-    if (dontShowSaveAlert) {
-      await AsyncStorage.setItem(SAVE_HINT_KEY, "true");
-      setSaveHintDismissed(true);
-    }
-    setShowSaveAlert(false);
-    if (pendingSaveRef.current) {
-      const { unlockNum, relockNum, penaltyNum } = pendingSaveRef.current;
-      pendingSaveRef.current = null;
-      performSave(unlockNum, relockNum, penaltyNum);
-    }
-  };
-
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-900">
-      {/* Save alert modal */}
-      <Modal
-        visible={showSaveAlert}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setShowSaveAlert(false)}
-      >
-        <View className="flex-1 bg-black/60 justify-center px-6">
-          <View className="bg-white dark:bg-gray-800 rounded-3xl p-6">
-            <Text className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-              {t("createLockbox.savingAlertTitle")}
-            </Text>
-            <Text className="text-sm text-gray-600 dark:text-gray-400 mb-5">
-              {t("createLockbox.savingAlertBody")}
-            </Text>
-            <TouchableOpacity
-              onPress={() => setDontShowSaveAlert(!dontShowSaveAlert)}
-              activeOpacity={0.7}
-              className="flex-row items-center gap-3 mb-5"
-            >
-              <View
-                className={`w-5 h-5 rounded items-center justify-center ${
-                  dontShowSaveAlert
-                    ? "bg-primary-600"
-                    : "border-2 border-gray-300 dark:border-gray-600"
-                }`}
-              >
-                {dontShowSaveAlert && (
-                  <Ionicons name="checkmark" size={12} color="white" />
-                )}
-              </View>
-              <Text className="text-sm text-gray-600 dark:text-gray-400 flex-1">
-                {t("createLockbox.savingAlertDontShow")}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleConfirmSaveAlert}
-              activeOpacity={0.7}
-              className="bg-primary-600 rounded-xl py-3.5 items-center"
-            >
-              <Text className="text-white font-semibold text-sm">
-                {t("createLockbox.savingAlertConfirm")}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* Password generator modal */}
       <PasswordGenerator
         visible={showPasswordGenerator}
         onClose={() => setShowPasswordGenerator(false)}
         onUsePassword={(pwd) => setContent(pwd)}
       />
+
+      {/* Loading Modal */}
+      <Modal visible={isSubmitting} transparent animationType="fade">
+        <View className="flex-1 bg-black/50 items-center justify-center px-4">
+          <View className="bg-white dark:bg-gray-800 rounded-2xl p-6 items-center shadow-xl w-full max-w-[300px]">
+            <ActivityIndicator size="large" color="#6366f1" className="mb-4" />
+            <Text className="text-base font-bold text-gray-900 dark:text-white mb-2 text-center">
+              {t('common.loading') || 'Opération en cours...'}
+            </Text>
+            <Text className="text-sm text-gray-500 dark:text-gray-400 text-center">
+              {t('common.cryptoWait') || 'Le chiffrement des données peut prendre quelques secondes. Veuillez patienter.'}
+            </Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* Header */}
       <View

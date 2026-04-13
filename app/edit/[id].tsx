@@ -9,6 +9,7 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -199,55 +200,58 @@ function EditLockboxContent({ lockbox }: { lockbox: Lockbox }) {
     }
 
     setIsSubmitting(true);
-    try {
-      const updates: Parameters<typeof updateLockbox>[1] = {
-        name: name.trim(),
-        category: category ?? null,
-        tags: serializeTags(tags) ?? null,
-        unlock_delay_seconds: newUnlockSeconds,
-        relock_delay_seconds: delayToSeconds(relockNum, relockUnit),
-        reflection_enabled: reflectionEnabled,
-        reflection_message: reflectionEnabled
-          ? reflectionMessage.trim() || null
-          : null,
-        reflection_checklist: reflectionEnabled
-          ? reflectionChecklist.trim() || null
-          : null,
-        penalty_enabled: penaltyEnabled,
-        penalty_seconds: penaltySeconds,
-      };
+    
+    setTimeout(async () => {
+      try {
+        const updates: Parameters<typeof updateLockbox>[1] = {
+          name: name.trim(),
+          category: category ?? null,
+          tags: serializeTags(tags) ?? null,
+          unlock_delay_seconds: newUnlockSeconds,
+          relock_delay_seconds: delayToSeconds(relockNum, relockUnit),
+          reflection_enabled: reflectionEnabled,
+          reflection_message: reflectionEnabled
+            ? reflectionMessage.trim() || null
+            : null,
+          reflection_checklist: reflectionEnabled
+            ? reflectionChecklist.trim() || null
+            : null,
+          penalty_enabled: penaltyEnabled,
+          penalty_seconds: penaltySeconds,
+        };
 
-      if (perms.canEditContent) {
-        updates.content = content.trim();
-      }
-
-      if (perms.canManageSchedule) {
-        updates.scheduled_unlock_at = scheduledEnabled
-          ? scheduledDate.getTime()
-          : null;
-      }
-
-      await updateLockbox(lockbox.id, updates);
-
-      if (perms.canManagePanicCode) {
-        if (removePanicCode) {
-          await resetPanicCode(lockbox.id);
-        } else if (newPanicCode.trim()) {
-          await resetPanicCode(lockbox.id, newPanicCode.trim());
+        if (perms.canEditContent) {
+          updates.content = content.trim();
         }
-      }
 
-      if (perms.canPostponeSchedule && !perms.canManageSchedule && hasPostponed) {
-        await postponeScheduledUnlock(lockbox.id, postponeDate.getTime());
-      }
+        if (perms.canManageSchedule) {
+          updates.scheduled_unlock_at = scheduledEnabled
+            ? scheduledDate.getTime()
+            : null;
+        }
 
-      if (router.canDismiss()) router.dismiss();
-      else router.back();
-    } catch (e) {
-      Alert.alert('', t('editLockbox.saveError'));
-    } finally {
-      setIsSubmitting(false);
-    }
+        await updateLockbox(lockbox.id, updates);
+
+        if (perms.canManagePanicCode) {
+          if (removePanicCode) {
+            await resetPanicCode(lockbox.id);
+          } else if (newPanicCode.trim()) {
+            await resetPanicCode(lockbox.id, newPanicCode.trim());
+          }
+        }
+
+        if (perms.canPostponeSchedule && !perms.canManageSchedule && hasPostponed) {
+          await postponeScheduledUnlock(lockbox.id, postponeDate.getTime());
+        }
+
+        if (router.canDismiss()) router.dismiss();
+        else router.back();
+      } catch (e) {
+        Alert.alert('', t('editLockbox.saveError'));
+      } finally {
+        setIsSubmitting(false);
+      }
+    }, 50);
   };
 
   const currentScheduledTs = lockbox.scheduled_unlock_at;
@@ -257,6 +261,21 @@ function EditLockboxContent({ lockbox }: { lockbox: Lockbox }) {
 
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-900">
+      {/* Loading Modal */}
+      <Modal visible={isSubmitting} transparent animationType="fade">
+        <View className="flex-1 bg-black/50 items-center justify-center px-4">
+          <View className="bg-white dark:bg-gray-800 rounded-2xl p-6 items-center shadow-xl w-full max-w-[300px]">
+            <ActivityIndicator size="large" color="#6366f1" className="mb-4" />
+            <Text className="text-base font-bold text-gray-900 dark:text-white mb-2 text-center">
+              {t('common.loading') || 'Opération en cours...'}
+            </Text>
+            <Text className="text-sm text-gray-500 dark:text-gray-400 text-center">
+              {t('common.cryptoWait') || 'Le chiffrement des données peut prendre quelques secondes. Veuillez patienter.'}
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
       {/* Password generator modal */}
       <PasswordGenerator
         visible={showPasswordGenerator}
