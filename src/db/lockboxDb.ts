@@ -372,6 +372,7 @@ export async function checkAndUpdateStates(): Promise<Lockbox[]> {
        WHERE id = ?`,
       [relockTs, now, row.id]
     );
+    await logAccessEvent(row.id, 'unlock_completed');
   }
 
   // 2. Complete scheduled unlocks
@@ -389,6 +390,7 @@ export async function checkAndUpdateStates(): Promise<Lockbox[]> {
        WHERE id = ?`,
       [relockTs, now, row.id]
     );
+    await logAccessEvent(row.id, 'unlock_completed');
   }
 
   // 3. Auto-relock
@@ -398,6 +400,57 @@ export async function checkAndUpdateStates(): Promise<Lockbox[]> {
      WHERE is_locked = 0 AND relock_timestamp IS NOT NULL AND relock_timestamp <= ?`,
     [now, now]
   );
+
+  return getAllLockboxes();
+}
+
+/**
+ * Tampering response: cancel every in-flight unlock (countdown or scheduled)
+ * and re-lock everything currently unlocked. Each affected lockbox receives
+ * a `tamper_detected` access-log entry. Penalty is applied where enabled to
+ * discourage repeat attempts.
+ */
+export async function handleTamperingDetected(): Promise<Lockbox[]> {
+  const db = await getDatabase();
+  const now = Date.now();
+
+  const affected = await db.getAllAsync<{
+    id: number;
+    is_locked: number;
+    unlock_timestamp: number | null;
+    scheduled_unlock_at: number | null;
+    relock_timestamp: number | null;
+    penalty_enabled: number;
+    penalty_seconds: number;
+    unlock_delay_seconds: number;
+  }>(
+    `SELECT id, is_locked, unlock_timestamp, scheduled_unlock_at,
+            relock_timestamp, penalty_enabled, penalty_seconds, unlock_delay_seconds
+     FROM lockboxes
+     WHERE is_locked = 0
+        OR unlock_timestamp IS NOT NULL
+        OR scheduled_unlock_at IS NOT NULL`
+  );
+
+  for (const row of affected) {
+    const newDelay =
+      row.penalty_enabled === 1
+        ? row.unlock_delay_seconds + row.penalty_seconds
+        : row.unlock_delay_seconds;
+
+    await db.runAsync(
+      `UPDATE lockboxes
+       SET is_locked = 1,
+           unlock_timestamp = NULL,
+           scheduled_unlock_at = NULL,
+           relock_timestamp = NULL,
+           unlock_delay_seconds = ?,
+           updated_at = ?
+       WHERE id = ?`,
+      [newDelay, now, row.id]
+    );
+    await logAccessEvent(row.id, 'tamper_detected');
+  }
 
   return getAllLockboxes();
 }

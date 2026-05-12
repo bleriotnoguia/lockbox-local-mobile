@@ -43,6 +43,7 @@ interface LockboxState {
   setSelectedCategory: (category: string | null) => void;
   setSelectedTag: (tag: string | null) => void;
   checkAndUpdateStates: () => Promise<void>;
+  handleTamperingDetected: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -430,6 +431,21 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
       console.warn('[checkAndUpdateStates]', e);
     } finally {
       _checkInProgress = false;
+    }
+  },
+
+  handleTamperingDetected: async () => {
+    try {
+      const lockboxes = await db.handleTamperingDetected();
+      const { selectedLockbox } = get();
+      set({
+        lockboxes,
+        selectedLockbox: selectedLockbox
+          ? lockboxes.find((lb) => lb.id === selectedLockbox.id) ?? null
+          : null,
+      });
+    } catch (e) {
+      console.warn('[handleTamperingDetected]', e);
     }
   },
 

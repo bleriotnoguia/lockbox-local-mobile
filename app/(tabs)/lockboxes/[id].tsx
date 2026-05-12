@@ -7,6 +7,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -67,6 +68,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
   const [decryptedContent, setDecryptedContent] = useState<string | null>(null);
   const [isContentVisible, setIsContentVisible] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [panicInput, setPanicInput] = useState("");
   const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -88,6 +90,7 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
     if (!countdown || countdown.total > 0) return;
     if (status === "locked" || status === "unlocked") return;
     let cancelled = false;
+    setIsFinalizing(true);
     (async () => {
       await checkAndUpdateStates();
       if (cancelled) return;
@@ -97,6 +100,16 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
       cancelled = true;
     };
   }, [countdown?.total, status, checkAndUpdateStates]);
+
+  useEffect(() => {
+    if (status === "locked") {
+      setIsFinalizing(false);
+      return;
+    }
+    if (status === "unlocked" && !isDecrypting && decryptedContent !== null) {
+      setIsFinalizing(false);
+    }
+  }, [status, isDecrypting, decryptedContent]);
 
   const loadDecryptedContent = useCallback(async () => {
     if (status !== "unlocked") {
@@ -559,6 +572,21 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
         }}
         onCancel={() => setShowReflection(false)}
       />
+
+      {/* Finalizing / Decrypting overlay */}
+      <Modal visible={isFinalizing} animationType="fade" transparent>
+        <View className="flex-1 bg-black/60 items-center justify-center px-8">
+          <View className="bg-white dark:bg-gray-800 rounded-2xl px-6 py-6 items-center min-w-[220px]">
+            <ActivityIndicator size="large" color="#6366f1" />
+            <Text className="text-base font-semibold text-gray-900 dark:text-white mt-4">
+              {t("finalizing.title")}
+            </Text>
+            <Text className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+              {t("finalizing.body")}
+            </Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* Extend Delay Modal */}
       <ExtendDelayModal

@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +33,7 @@ export default function SettingsScreen() {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [showImportPassword, setShowImportPassword] = useState(false);
   const [importSourcePassword, setImportSourcePassword] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -77,6 +79,7 @@ export default function SettingsScreen() {
 
   const performImport = async (sourcePassword?: string) => {
     setShowImportPassword(false);
+    setIsImporting(true);
     try {
       const imported = await importLockboxes(sourcePassword || undefined);
       if (imported.length === 0) {
@@ -98,8 +101,10 @@ export default function SettingsScreen() {
       } else {
         Alert.alert('', t('settings.importErrorGeneric', { detail: msg }));
       }
+    } finally {
+      setIsImporting(false);
+      setImportSourcePassword('');
     }
-    setImportSourcePassword('');
   };
 
   const themes: ThemeMode[] = ['light', 'system', 'dark'];
@@ -267,6 +272,18 @@ export default function SettingsScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Import loading overlay */}
+      <Modal visible={isImporting} animationType="fade" transparent>
+        <View className="flex-1 bg-black/60 items-center justify-center">
+          <View className="bg-white dark:bg-gray-800 rounded-2xl px-6 py-5 items-center">
+            <ActivityIndicator size="large" color="#6366f1" />
+            <Text className="text-sm text-gray-700 dark:text-gray-300 mt-3">
+              {t('settings.importing')}
+            </Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* Import Password Modal */}
       <Modal

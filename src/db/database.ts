@@ -1,14 +1,25 @@
 import * as SQLite from 'expo-sqlite';
 
 let db: SQLite.SQLiteDatabase | null = null;
+let openPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (db) return db;
-  db = await SQLite.openDatabaseAsync('lockbox.db');
-  await db.execAsync('PRAGMA journal_mode = WAL');
-  await db.execAsync('PRAGMA foreign_keys = ON');
-  await initialize(db);
-  return db;
+  if (openPromise) return openPromise;
+  openPromise = (async () => {
+    const handle = await SQLite.openDatabaseAsync('lockbox.db');
+    await handle.execAsync('PRAGMA journal_mode = WAL');
+    await handle.execAsync('PRAGMA foreign_keys = ON');
+    await initialize(handle);
+    db = handle;
+    return handle;
+  })();
+  try {
+    return await openPromise;
+  } catch (e) {
+    openPromise = null;
+    throw e;
+  }
 }
 
 async function initialize(database: SQLite.SQLiteDatabase): Promise<void> {
@@ -96,5 +107,6 @@ export async function closeDatabase(): Promise<void> {
   if (db) {
     await db.closeAsync();
     db = null;
+    openPromise = null;
   }
 }

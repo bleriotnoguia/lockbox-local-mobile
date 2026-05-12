@@ -13,6 +13,7 @@ export {
   resetPanicCode,
   postponeScheduledUnlock,
   checkAndUpdateStates,
+  handleTamperingDetected,
   logAccessEvent,
   getAccessLog,
   getGlobalAccessLog,

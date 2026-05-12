@@ -62,7 +62,8 @@ export interface AccessLogEntry {
     | 'unlock_cancelled'
     | 'panic_used'
     | 'extend_delay'
-    | 'content_edited';
+    | 'content_edited'
+    | 'tamper_detected';
   timestamp: number;
 }
 

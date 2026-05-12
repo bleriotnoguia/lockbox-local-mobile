@@ -27,6 +27,10 @@ if (!isExpoGo) {
   }
 }
 
+// Small buffer added to the trigger time so the OS notification arrives
+// after the in-app decryption spinner has had a chance to finish.
+const DECRYPT_BUFFER_MS = 1500;
+
 async function requestPermissions() {
   if (!Notifications) return false;
   try {
@@ -44,8 +48,15 @@ async function requestPermissions() {
   }
 }
 
+type ScheduledEntry = {
+  identifier: string;
+  triggerTs: number;
+  kind: 'unlock' | 'scheduled';
+};
+
 export function useNotifications(lockboxes: Lockbox[]) {
-  const scheduledRef = useRef<Set<string>>(new Set());
+  // Per-lockbox scheduled notification, indexed by lockbox.id.
+  const scheduledRef = useRef<Map<number, ScheduledEntry>>(new Map());
 
   useEffect(() => {
     requestPermissions();
@@ -54,47 +65,94 @@ export function useNotifications(lockboxes: Lockbox[]) {
   useEffect(() => {
     if (!Notifications) return;
 
-    for (const lockbox of lockboxes) {
-      const status = getLockboxStatus(lockbox);
+    const seenIds = new Set<number>();
 
+    for (const lockbox of lockboxes) {
+      seenIds.add(lockbox.id);
+      const status = getLockboxStatus(lockbox);
+      const existing = scheduledRef.current.get(lockbox.id);
+
+      let kind: 'unlock' | 'scheduled' | null = null;
+      let triggerTs: number | null = null;
       if (status === 'unlocking' && lockbox.unlock_timestamp) {
-        const key = `unlock-${lockbox.id}-${lockbox.unlock_timestamp}`;
-        if (!scheduledRef.current.has(key)) {
-          scheduledRef.current.add(key);
-          const triggerDate = new Date(lockbox.unlock_timestamp);
-          if (triggerDate.getTime() > Date.now()) {
-            Notifications.scheduleNotificationAsync({
-              content: {
-                title: 'Lockbox Local',
-                body: `Your lockbox "${lockbox.name}" is now unlocked.`,
-              },
-              trigger: {
-                type: Notifications.SchedulableTriggerInputTypes.DATE,
-                date: triggerDate,
-              },
-            }).catch(() => {});
-          }
-        }
+        kind = 'unlock';
+        triggerTs = lockbox.unlock_timestamp + DECRYPT_BUFFER_MS;
+      } else if (status === 'scheduled' && lockbox.scheduled_unlock_at) {
+        kind = 'scheduled';
+        triggerTs = lockbox.scheduled_unlock_at + DECRYPT_BUFFER_MS;
       }
 
-      if (status === 'scheduled' && lockbox.scheduled_unlock_at) {
-        const key = `scheduled-${lockbox.id}-${lockbox.scheduled_unlock_at}`;
-        if (!scheduledRef.current.has(key)) {
-          scheduledRef.current.add(key);
-          const triggerDate = new Date(lockbox.scheduled_unlock_at);
-          if (triggerDate.getTime() > Date.now()) {
-            Notifications.scheduleNotificationAsync({
-              content: {
-                title: 'Lockbox Local',
-                body: `Your lockbox "${lockbox.name}" is now unlocked.`,
-              },
-              trigger: {
-                type: Notifications.SchedulableTriggerInputTypes.DATE,
-                date: triggerDate,
-              },
-            }).catch(() => {});
-          }
+      // No pending unlock — cancel any previously scheduled notif.
+      if (!kind || triggerTs == null) {
+        if (existing) {
+          Notifications.cancelScheduledNotificationAsync(existing.identifier).catch(
+            () => {}
+          );
+          scheduledRef.current.delete(lockbox.id);
         }
+        continue;
+      }
+
+      // Same notif already scheduled for this exact trigger — skip.
+      if (
+        existing &&
+        existing.kind === kind &&
+        existing.triggerTs === triggerTs
+      ) {
+        continue;
+      }
+
+      // Trigger changed (extend/cancel/re-unlock) — cancel the old one first.
+      if (existing) {
+        Notifications.cancelScheduledNotificationAsync(existing.identifier).catch(
+          () => {}
+        );
+        scheduledRef.current.delete(lockbox.id);
+      }
+
+      if (triggerTs <= Date.now()) continue;
+
+      const triggerDate = new Date(triggerTs);
+      const lockboxId = lockbox.id;
+      const lockboxName = lockbox.name;
+      const kindForClosure = kind;
+      const triggerTsForClosure = triggerTs;
+
+      Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Lockbox Local',
+          body: `Your lockbox "${lockboxName}" is now unlocked.`,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: triggerDate,
+        },
+      })
+        .then((identifier) => {
+          // Only keep this entry if no newer scheduling has happened in the
+          // meantime for the same lockbox.
+          const current = scheduledRef.current.get(lockboxId);
+          if (!current) {
+            scheduledRef.current.set(lockboxId, {
+              identifier,
+              triggerTs: triggerTsForClosure,
+              kind: kindForClosure,
+            });
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Drop entries for lockboxes that no longer exist.
+    for (const id of Array.from(scheduledRef.current.keys())) {
+      if (!seenIds.has(id)) {
+        const entry = scheduledRef.current.get(id);
+        if (entry && Notifications) {
+          Notifications.cancelScheduledNotificationAsync(entry.identifier).catch(
+            () => {}
+          );
+        }
+        scheduledRef.current.delete(id);
       }
     }
   }, [lockboxes]);
