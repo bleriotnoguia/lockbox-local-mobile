@@ -1,11 +1,17 @@
 import { getDatabase } from './database';
 import type { Lockbox, AccessLogEntry } from '../types';
+import {
+  getMonoNow,
+  getForwardTolerance,
+  isWallMonoTampered,
+  markUnlockVerifiedInSession,
+} from '../utils/timeIntegrity';
 
 const SELECT_LOCKBOX = `SELECT id, name, content, category, is_locked,
   unlock_delay_seconds, relock_delay_seconds, unlock_timestamp, relock_timestamp,
   created_at, updated_at, reflection_enabled, reflection_message, reflection_checklist,
   penalty_enabled, penalty_seconds, panic_code_hash, panic_code_used, scheduled_unlock_at,
-  tags
+  tags, unlock_mono_start, unlock_wall_start
   FROM lockboxes`;
 
 interface RawLockboxRow {
@@ -29,6 +35,8 @@ interface RawLockboxRow {
   panic_code_used: number;
   scheduled_unlock_at: number | null;
   tags: string | null;
+  unlock_mono_start: number | null;
+  unlock_wall_start: number | null;
 }
 
 function rowToLockbox(row: RawLockboxRow): Lockbox {
@@ -53,6 +61,8 @@ function rowToLockbox(row: RawLockboxRow): Lockbox {
     panic_code_used: (row.panic_code_used ?? 0) === 1,
     scheduled_unlock_at: row.scheduled_unlock_at ?? null,
     tags: row.tags ?? null,
+    unlock_mono_start: row.unlock_mono_start ?? null,
+    unlock_wall_start: row.unlock_wall_start ?? null,
   };
 }
 
@@ -94,13 +104,17 @@ export async function createLockbox(
 ): Promise<Lockbox> {
   const db = await getDatabase();
   const now = Date.now();
+  const hasSchedule = input.scheduled_unlock_at != null;
+  const wallStart = hasSchedule ? now : null;
+  const monoStart = hasSchedule ? getMonoNow() : null;
 
   const result = await db.runAsync(
     `INSERT INTO lockboxes (name, content, category, is_locked, unlock_delay_seconds,
       relock_delay_seconds, created_at, updated_at,
       reflection_enabled, reflection_message, reflection_checklist,
-      penalty_enabled, penalty_seconds, panic_code_hash, scheduled_unlock_at, tags)
-     VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      penalty_enabled, penalty_seconds, panic_code_hash, scheduled_unlock_at, tags,
+      unlock_wall_start, unlock_mono_start)
+     VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.name,
       input.content,
@@ -117,9 +131,14 @@ export async function createLockbox(
       input.panic_code_hash,
       input.scheduled_unlock_at,
       input.tags,
+      wallStart,
+      monoStart,
     ]
   );
 
+  if (hasSchedule) {
+    markUnlockVerifiedInSession(result.lastInsertRowId);
+  }
   const lockbox = await getLockbox(result.lastInsertRowId);
   if (!lockbox) throw new Error('Failed to create lockbox');
   return lockbox;
@@ -150,13 +169,39 @@ export async function updateLockbox(
   const current = await getLockbox(input.id);
   if (!current) throw new Error('Lockbox not found');
 
+  const nextScheduled =
+    input.scheduled_unlock_at !== undefined
+      ? input.scheduled_unlock_at
+      : current.scheduled_unlock_at;
+  const scheduleChanged =
+    input.scheduled_unlock_at !== undefined &&
+    input.scheduled_unlock_at !== current.scheduled_unlock_at;
+  // If an active countdown (unlock_timestamp) is in flight, leave its anchor
+  // alone — editing other fields should not reset the integrity baseline.
+  // Only re-anchor when the schedule itself is the field being changed.
+  let nextWallStart = current.unlock_wall_start;
+  let nextMonoStart = current.unlock_mono_start;
+  let armScheduleVerification = false;
+  if (scheduleChanged && current.unlock_timestamp == null) {
+    if (nextScheduled == null) {
+      nextWallStart = null;
+      nextMonoStart = null;
+    } else {
+      nextWallStart = now;
+      nextMonoStart = getMonoNow();
+      armScheduleVerification = true;
+    }
+  }
+
   await db.runAsync(
     `UPDATE lockboxes SET
       name = ?, content = ?, category = ?,
       unlock_delay_seconds = ?, relock_delay_seconds = ?,
       reflection_enabled = ?, reflection_message = ?, reflection_checklist = ?,
       penalty_enabled = ?, penalty_seconds = ?, panic_code_hash = ?,
-      scheduled_unlock_at = ?, tags = ?, updated_at = ?
+      scheduled_unlock_at = ?, tags = ?,
+      unlock_wall_start = ?, unlock_mono_start = ?,
+      updated_at = ?
      WHERE id = ?`,
     [
       input.name ?? current.name,
@@ -176,15 +221,18 @@ export async function updateLockbox(
       input.panic_code_hash !== undefined
         ? input.panic_code_hash
         : current.panic_code_hash,
-      input.scheduled_unlock_at !== undefined
-        ? input.scheduled_unlock_at
-        : current.scheduled_unlock_at,
+      nextScheduled,
       input.tags !== undefined ? input.tags : current.tags,
+      nextWallStart,
+      nextMonoStart,
       now,
       input.id,
     ]
   );
 
+  if (armScheduleVerification) {
+    markUnlockVerifiedInSession(input.id);
+  }
   const updated = await getLockbox(input.id);
   if (!updated) throw new Error('Lockbox not found after update');
   return updated;
@@ -198,15 +246,19 @@ export async function deleteLockbox(id: number): Promise<void> {
 export async function unlockLockbox(id: number): Promise<Lockbox> {
   const db = await getDatabase();
   const now = Date.now();
+  const monoStart = getMonoNow();
   const current = await getLockbox(id);
   if (!current) throw new Error('Lockbox not found');
 
   const unlockTimestamp = now + current.unlock_delay_seconds * 1000;
 
   await db.runAsync(
-    'UPDATE lockboxes SET unlock_timestamp = ?, updated_at = ? WHERE id = ?',
-    [unlockTimestamp, now, id]
+    `UPDATE lockboxes SET unlock_timestamp = ?, unlock_wall_start = ?,
+      unlock_mono_start = ?, updated_at = ?
+     WHERE id = ?`,
+    [unlockTimestamp, now, monoStart, now, id]
   );
+  markUnlockVerifiedInSession(id);
 
   await logAccessEvent(id, 'unlock_requested');
   const result = await getLockbox(id);
@@ -225,8 +277,9 @@ export async function cancelUnlock(id: number): Promise<Lockbox> {
     : current.unlock_delay_seconds;
 
   await db.runAsync(
-    `UPDATE lockboxes SET is_locked = 1, unlock_timestamp = NULL, scheduled_unlock_at = NULL,
-      unlock_delay_seconds = ?, updated_at = ?
+    `UPDATE lockboxes SET is_locked = 1, unlock_timestamp = NULL,
+      unlock_mono_start = NULL, unlock_wall_start = NULL,
+      scheduled_unlock_at = NULL, unlock_delay_seconds = ?, updated_at = ?
      WHERE id = ?`,
     [newDelay, now, id]
   );
@@ -275,6 +328,7 @@ export async function relockLockbox(id: number): Promise<Lockbox> {
 
   await db.runAsync(
     `UPDATE lockboxes SET is_locked = 1, unlock_timestamp = NULL,
+      unlock_mono_start = NULL, unlock_wall_start = NULL,
       relock_timestamp = NULL, updated_at = ?
      WHERE id = ?`,
     [now, id]
@@ -300,8 +354,9 @@ export async function usePanicCode(
   const relockTimestamp = now + current.relock_delay_seconds * 1000;
 
   await db.runAsync(
-    `UPDATE lockboxes SET is_locked = 0, unlock_timestamp = NULL, scheduled_unlock_at = NULL,
-      relock_timestamp = ?, panic_code_used = 1, updated_at = ?
+    `UPDATE lockboxes SET is_locked = 0, unlock_timestamp = NULL,
+      unlock_mono_start = NULL, unlock_wall_start = NULL,
+      scheduled_unlock_at = NULL, relock_timestamp = ?, panic_code_used = 1, updated_at = ?
      WHERE id = ?`,
     [relockTimestamp, now, id]
   );
@@ -352,41 +407,127 @@ export async function postponeScheduledUnlock(
   return result;
 }
 
-export async function checkAndUpdateStates(): Promise<Lockbox[]> {
+export interface CheckAndUpdateResult {
+  lockboxes: Lockbox[];
+  tamperedIds: number[];
+}
+
+async function cancelWithTamper(
+  db: Awaited<ReturnType<typeof getDatabase>>,
+  row: {
+    id: number;
+    penalty_enabled: number;
+    penalty_seconds: number;
+    unlock_delay_seconds: number;
+  },
+  now: number
+): Promise<void> {
+  const newDelay =
+    row.penalty_enabled === 1
+      ? row.unlock_delay_seconds + row.penalty_seconds
+      : row.unlock_delay_seconds;
+  await db.runAsync(
+    `UPDATE lockboxes
+     SET is_locked = 1, unlock_timestamp = NULL,
+         unlock_mono_start = NULL, unlock_wall_start = NULL,
+         scheduled_unlock_at = NULL, relock_timestamp = NULL,
+         unlock_delay_seconds = ?, updated_at = ?
+     WHERE id = ?`,
+    [newDelay, now, row.id]
+  );
+  await logAccessEvent(row.id, 'tamper_detected');
+}
+
+export async function checkAndUpdateStates(): Promise<CheckAndUpdateResult> {
   const db = await getDatabase();
   const now = Date.now();
+  const tamperedIds: number[] = [];
 
-  // 1. Complete countdown-based unlocks:
-  //    Find lockboxes whose unlock countdown has finished, compute each
-  //    relock_timestamp individually to avoid parameter-in-expression issues.
-  const pendingUnlocks = await db.getAllAsync<{ id: number; relock_delay_seconds: number }>(
-    `SELECT id, relock_delay_seconds FROM lockboxes
+  // 1. Countdown-based unlocks. Before completing, verify per-lockbox
+  //    monotonic integrity. A wall clock that has advanced significantly
+  //    faster than `perf.now()` since press indicates a forward jump —
+  //    cancel the unlock and apply penalty.
+  const pendingUnlocks = await db.getAllAsync<{
+    id: number;
+    relock_delay_seconds: number;
+    unlock_delay_seconds: number;
+    unlock_wall_start: number | null;
+    unlock_mono_start: number | null;
+    penalty_enabled: number;
+    penalty_seconds: number;
+  }>(
+    `SELECT id, relock_delay_seconds, unlock_delay_seconds,
+            unlock_wall_start, unlock_mono_start,
+            penalty_enabled, penalty_seconds
+     FROM lockboxes
      WHERE is_locked = 1 AND unlock_timestamp IS NOT NULL AND unlock_timestamp <= ?`,
     [now]
   );
   for (const row of pendingUnlocks) {
+    const tolerance = getForwardTolerance(row.unlock_delay_seconds);
+    const tampered = isWallMonoTampered(
+      row.id,
+      row.unlock_wall_start,
+      row.unlock_mono_start,
+      tolerance
+    );
+    if (tampered === true) {
+      await cancelWithTamper(db, row, now);
+      tamperedIds.push(row.id);
+      continue;
+    }
     const relockTs = now + row.relock_delay_seconds * 1000;
     await db.runAsync(
       `UPDATE lockboxes
-       SET is_locked = 0, relock_timestamp = ?, unlock_timestamp = NULL, updated_at = ?
+       SET is_locked = 0, relock_timestamp = ?, unlock_timestamp = NULL,
+           unlock_mono_start = NULL, unlock_wall_start = NULL, updated_at = ?
        WHERE id = ?`,
       [relockTs, now, row.id]
     );
     await logAccessEvent(row.id, 'unlock_completed');
   }
 
-  // 2. Complete scheduled unlocks
-  const pendingScheduled = await db.getAllAsync<{ id: number; relock_delay_seconds: number }>(
-    `SELECT id, relock_delay_seconds FROM lockboxes
+  // 2. Scheduled unlocks. Same per-lockbox check, with tolerance scaled to
+  //    the schedule's full arming-to-target duration.
+  const pendingScheduled = await db.getAllAsync<{
+    id: number;
+    relock_delay_seconds: number;
+    unlock_delay_seconds: number;
+    scheduled_unlock_at: number;
+    unlock_wall_start: number | null;
+    unlock_mono_start: number | null;
+    penalty_enabled: number;
+    penalty_seconds: number;
+  }>(
+    `SELECT id, relock_delay_seconds, unlock_delay_seconds, scheduled_unlock_at,
+            unlock_wall_start, unlock_mono_start,
+            penalty_enabled, penalty_seconds
+     FROM lockboxes
      WHERE is_locked = 1 AND scheduled_unlock_at IS NOT NULL AND scheduled_unlock_at <= ?
        AND unlock_timestamp IS NULL`,
     [now]
   );
   for (const row of pendingScheduled) {
+    const durationSeconds = row.unlock_wall_start != null
+      ? Math.max(0, (row.scheduled_unlock_at - row.unlock_wall_start) / 1000)
+      : 0;
+    const tolerance = getForwardTolerance(durationSeconds);
+    const tampered = isWallMonoTampered(
+      row.id,
+      row.unlock_wall_start,
+      row.unlock_mono_start,
+      tolerance
+    );
+    if (tampered === true) {
+      await cancelWithTamper(db, row, now);
+      tamperedIds.push(row.id);
+      continue;
+    }
     const relockTs = now + row.relock_delay_seconds * 1000;
     await db.runAsync(
       `UPDATE lockboxes
-       SET is_locked = 0, relock_timestamp = ?, scheduled_unlock_at = NULL, updated_at = ?
+       SET is_locked = 0, relock_timestamp = ?, scheduled_unlock_at = NULL,
+           unlock_mono_start = NULL, unlock_wall_start = NULL, updated_at = ?
        WHERE id = ?`,
       [relockTs, now, row.id]
     );
@@ -401,7 +542,8 @@ export async function checkAndUpdateStates(): Promise<Lockbox[]> {
     [now, now]
   );
 
-  return getAllLockboxes();
+  const lockboxes = await getAllLockboxes();
+  return { lockboxes, tamperedIds };
 }
 
 /**
@@ -442,6 +584,8 @@ export async function handleTamperingDetected(): Promise<Lockbox[]> {
       `UPDATE lockboxes
        SET is_locked = 1,
            unlock_timestamp = NULL,
+           unlock_mono_start = NULL,
+           unlock_wall_start = NULL,
            scheduled_unlock_at = NULL,
            relock_timestamp = NULL,
            unlock_delay_seconds = ?,

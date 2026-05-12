@@ -7,9 +7,8 @@ import { useColorScheme } from 'nativewind';
 import { useAuthStore, useLockboxStore, useThemeStore } from '../src/store';
 import { useNotifications, useScreenSecurity } from '../src/hooks';
 import {
-  initTimeIntegrity,
-  checkTimeIntegrity,
-  refreshSessionBaseline,
+  recordWallHighWater,
+  checkWallRollback,
 } from '../src/utils/timeIntegrity';
 import { checkAndRecordAppVersion } from '../src/utils/appVersion';
 import { useTranslation } from '../src/i18n';
@@ -23,30 +22,50 @@ export default function RootLayout() {
   const handleTamperingDetected = useLockboxStore(
     (s) => s.handleTamperingDetected
   );
+  const tamperEventTick = useLockboxStore((s) => s.tamperEventTick);
   const lockboxes = useLockboxStore((s) => s.lockboxes);
   const themeMode = useThemeStore((s) => s.theme);
   const effectiveTheme = useThemeStore((s) => s.getEffectiveTheme());
   const appState = useRef(AppState.currentState);
   const tamperAlertShownRef = useRef(false);
+  const lastTamperTickRef = useRef(0);
+
+  const showTamperAlert = React.useCallback(() => {
+    if (tamperAlertShownRef.current) return;
+    tamperAlertShownRef.current = true;
+    Alert.alert(
+      t('tamper.title'),
+      t('tamper.body'),
+      [
+        {
+          text: t('common.confirm'),
+          onPress: () => {
+            tamperAlertShownRef.current = false;
+          },
+        },
+      ]
+    );
+  }, [t]);
+
+  useEffect(() => {
+    if (tamperEventTick > lastTamperTickRef.current) {
+      lastTamperTickRef.current = tamperEventTick;
+      showTamperAlert();
+    }
+  }, [tamperEventTick, showTamperAlert]);
   const [versionBlocked, setVersionBlocked] = React.useState<{
     required: string;
   } | null>(null);
 
   const runIntegrityCheck = React.useCallback(async () => {
-    const result = await checkTimeIntegrity();
-    if (result.tampered) {
+    const rolledBack = await checkWallRollback();
+    if (rolledBack) {
       await handleTamperingDetected();
-      refreshSessionBaseline();
-      if (!tamperAlertShownRef.current) {
-        tamperAlertShownRef.current = true;
-        Alert.alert(
-          t('tamper.title'),
-          t('tamper.body'),
-          [{ text: t('common.confirm'), onPress: () => { tamperAlertShownRef.current = false; } }]
-        );
-      }
+      showTamperAlert();
+      return;
     }
-  }, [handleTamperingDetected, t]);
+    await recordWallHighWater();
+  }, [handleTamperingDetected, showTamperAlert]);
 
   // Sync the theme store with NativeWind's color scheme so dark: classes match
   const { setColorScheme } = useColorScheme();
@@ -58,7 +77,7 @@ export default function RootLayout() {
   useScreenSecurity();
 
   useEffect(() => {
-    initTimeIntegrity();
+    recordWallHighWater();
   }, []);
 
   useEffect(() => {

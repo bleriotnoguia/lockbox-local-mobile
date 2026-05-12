@@ -101,6 +101,28 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     }
     await database.execAsync('PRAGMA user_version = 2');
   }
+
+  if (version < 3) {
+    try {
+      await database.execAsync(
+        'ALTER TABLE lockboxes ADD COLUMN unlock_mono_start REAL'
+      );
+    } catch {
+      // Column may already exist
+    }
+    await database.execAsync('PRAGMA user_version = 3');
+  }
+
+  if (version < 4) {
+    try {
+      await database.execAsync(
+        'ALTER TABLE lockboxes ADD COLUMN unlock_wall_start INTEGER'
+      );
+    } catch {
+      // Column may already exist
+    }
+    await database.execAsync('PRAGMA user_version = 4');
+  }
 }
 
 export async function closeDatabase(): Promise<void> {

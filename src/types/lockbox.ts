@@ -19,6 +19,8 @@ export interface Lockbox {
   panic_code_used: boolean;
   scheduled_unlock_at: number | null;
   tags: string | null;
+  unlock_mono_start: number | null;
+  unlock_wall_start: number | null;
 }
 
 export interface CreateLockboxInput {

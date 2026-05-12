@@ -44,6 +44,7 @@ interface LockboxState {
   setSelectedTag: (tag: string | null) => void;
   checkAndUpdateStates: () => Promise<void>;
   handleTamperingDetected: () => Promise<void>;
+  tamperEventTick: number;
   clearError: () => void;
 }
 
@@ -57,6 +58,7 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
   searchQuery: '',
   selectedCategory: null,
   selectedTag: null,
+  tamperEventTick: 0,
 
   fetchLockboxes: async () => {
     set({ isLoading: true, error: null });
@@ -419,13 +421,15 @@ export const useLockboxStore = create<LockboxState>((set, get) => ({
 
     _checkInProgress = true;
     try {
-      const lockboxes = await db.checkAndUpdateStates();
-      const { selectedLockbox } = get();
+      const { lockboxes, tamperedIds } = await db.checkAndUpdateStates();
+      const { selectedLockbox, tamperEventTick } = get();
       set({
         lockboxes,
         selectedLockbox: selectedLockbox
           ? lockboxes.find((lb) => lb.id === selectedLockbox.id) ?? null
           : null,
+        tamperEventTick:
+          tamperedIds.length > 0 ? tamperEventTick + 1 : tamperEventTick,
       });
     } catch (e) {
       console.warn('[checkAndUpdateStates]', e);
