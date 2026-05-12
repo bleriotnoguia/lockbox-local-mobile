@@ -2,9 +2,7 @@ import { getDatabase } from './database';
 import type { Lockbox, AccessLogEntry } from '../types';
 import {
   getMonoNow,
-  getForwardTolerance,
   hasMonoElapsed,
-  isWallMonoTampered,
   markUnlockVerifiedInSession,
 } from '../utils/timeIntegrity';
 
@@ -418,71 +416,28 @@ export interface CheckAndUpdateResult {
   tamperedIds: number[];
 }
 
-async function cancelWithTamper(
-  db: Awaited<ReturnType<typeof getDatabase>>,
-  row: {
-    id: number;
-    penalty_enabled: number;
-    penalty_seconds: number;
-    unlock_delay_seconds: number;
-  },
-  now: number
-): Promise<void> {
-  const newDelay =
-    row.penalty_enabled === 1
-      ? row.unlock_delay_seconds + row.penalty_seconds
-      : row.unlock_delay_seconds;
-  await db.runAsync(
-    `UPDATE lockboxes
-     SET is_locked = 1, unlock_timestamp = NULL,
-         unlock_mono_start = NULL, unlock_wall_start = NULL,
-         scheduled_unlock_at = NULL, relock_timestamp = NULL,
-         relock_mono_start = NULL,
-         unlock_delay_seconds = ?, updated_at = ?
-     WHERE id = ?`,
-    [newDelay, now, row.id]
-  );
-  await logAccessEvent(row.id, 'tamper_detected');
-}
-
 export async function checkAndUpdateStates(): Promise<CheckAndUpdateResult> {
   const db = await getDatabase();
   const now = Date.now();
   const tamperedIds: number[] = [];
 
-  // 1. Countdown-based unlocks. Before completing, verify per-lockbox
-  //    monotonic integrity. A wall clock that has advanced significantly
-  //    faster than `perf.now()` since press indicates a forward jump —
-  //    cancel the unlock and apply penalty.
+  // 1. Countdown-based unlocks. We deliberately do NOT compare wall-vs-mono
+  //    elapsed here: on Android, `performance.now()` (CLOCK_MONOTONIC via
+  //    Hermes) does not advance during deep sleep, so any countdown that
+  //    spans device sleep produces wallElapsed ≫ monoElapsed and would
+  //    false-positive as a forward clock jump. Pure JS cannot distinguish
+  //    sleep from tampering. Cross-session anti-rollback (checkWallRollback)
+  //    and the mono-based auto-relock below remain in force.
   const pendingUnlocks = await db.getAllAsync<{
     id: number;
     relock_delay_seconds: number;
-    unlock_delay_seconds: number;
-    unlock_wall_start: number | null;
-    unlock_mono_start: number | null;
-    penalty_enabled: number;
-    penalty_seconds: number;
   }>(
-    `SELECT id, relock_delay_seconds, unlock_delay_seconds,
-            unlock_wall_start, unlock_mono_start,
-            penalty_enabled, penalty_seconds
+    `SELECT id, relock_delay_seconds
      FROM lockboxes
      WHERE is_locked = 1 AND unlock_timestamp IS NOT NULL AND unlock_timestamp <= ?`,
     [now]
   );
   for (const row of pendingUnlocks) {
-    const tolerance = getForwardTolerance(row.unlock_delay_seconds);
-    const tampered = isWallMonoTampered(
-      row.id,
-      row.unlock_wall_start,
-      row.unlock_mono_start,
-      tolerance
-    );
-    if (tampered === true) {
-      await cancelWithTamper(db, row, now);
-      tamperedIds.push(row.id);
-      continue;
-    }
     const relockTs = now + row.relock_delay_seconds * 1000;
     const relockMonoStart = getMonoNow();
     await db.runAsync(
@@ -497,42 +452,18 @@ export async function checkAndUpdateStates(): Promise<CheckAndUpdateResult> {
     await logAccessEvent(row.id, 'unlock_completed');
   }
 
-  // 2. Scheduled unlocks. Same per-lockbox check, with tolerance scaled to
-  //    the schedule's full arming-to-target duration.
+  // 2. Scheduled unlocks. Same reasoning as above — no forward-jump check.
   const pendingScheduled = await db.getAllAsync<{
     id: number;
     relock_delay_seconds: number;
-    unlock_delay_seconds: number;
-    scheduled_unlock_at: number;
-    unlock_wall_start: number | null;
-    unlock_mono_start: number | null;
-    penalty_enabled: number;
-    penalty_seconds: number;
   }>(
-    `SELECT id, relock_delay_seconds, unlock_delay_seconds, scheduled_unlock_at,
-            unlock_wall_start, unlock_mono_start,
-            penalty_enabled, penalty_seconds
+    `SELECT id, relock_delay_seconds
      FROM lockboxes
      WHERE is_locked = 1 AND scheduled_unlock_at IS NOT NULL AND scheduled_unlock_at <= ?
        AND unlock_timestamp IS NULL`,
     [now]
   );
   for (const row of pendingScheduled) {
-    const durationSeconds = row.unlock_wall_start != null
-      ? Math.max(0, (row.scheduled_unlock_at - row.unlock_wall_start) / 1000)
-      : 0;
-    const tolerance = getForwardTolerance(durationSeconds);
-    const tampered = isWallMonoTampered(
-      row.id,
-      row.unlock_wall_start,
-      row.unlock_mono_start,
-      tolerance
-    );
-    if (tampered === true) {
-      await cancelWithTamper(db, row, now);
-      tamperedIds.push(row.id);
-      continue;
-    }
     const relockTs = now + row.relock_delay_seconds * 1000;
     const relockMonoStart = getMonoNow();
     await db.runAsync(

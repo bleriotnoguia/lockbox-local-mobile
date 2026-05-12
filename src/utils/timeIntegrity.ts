@@ -3,31 +3,32 @@ import * as SecureStore from 'expo-secure-store';
 /**
  * Time-tampering protection.
  *
- * Two layers:
+ * Active layers:
  *
- *  1. Per-lockbox monotonic check. When an unlock countdown is started or a
- *     scheduled unlock is armed, we snapshot `Date.now()` and `perf.now()`
- *     into the row (`unlock_wall_start`, `unlock_mono_start`) and remember
- *     the lockbox id in `verifiedInSession`. At completion (countdown
- *     expiry or schedule target reached), we verify the wall elapsed since
- *     the anchor hasn't outrun the monotonic elapsed — a forward clock
- *     jump would. See `isWallMonoTampered`.
- *
- *  2. Cross-session anti-rollback. We persist the highest wall-clock value
+ *  1. Cross-session anti-rollback. We persist the highest wall-clock value
  *     ever observed in SecureStore. Any wall reading more than tolerance
  *     below it indicates the user moved the clock backward (e.g. to keep
- *     a relock from firing).
+ *     a relock from firing). See `checkWallRollback` / `recordWallHighWater`.
  *
- * Limits:
- *  - `perf.now()` is process-local. An unlock/schedule whose anchor was
- *    captured in a previous JS process cannot be verified by layer 1
- *    (`verifiedInSession` resets on cold start). Forward-clock manipulation
- *    that spans an app restart is NOT detected by this layer — only the
- *    cross-session anti-rollback catches backward jumps in that window.
- *  - On Android, `perf.now()` (CLOCK_MONOTONIC via Hermes) pauses during
- *    deep device sleep / doze. Long countdowns that span heavy idle
- *    periods may produce false positives; tolerance is calibrated to
- *    scale with the expected duration.
+ *  2. Monotonic-based auto-relock. After a successful unlock we snapshot
+ *     `perf.now()` into `relock_mono_start`. The relock fires when either
+ *     the wall timestamp expires OR enough monotonic time has elapsed,
+ *     which defeats a backward clock jump intended to keep the lockbox
+ *     open. See `hasMonoElapsed`.
+ *
+ * Removed: a per-lockbox forward-jump check that compared wall-vs-mono
+ * elapsed since the unlock anchor. It produced false positives on long
+ * countdowns: `performance.now()` (CLOCK_MONOTONIC via Hermes on Android,
+ * mach_absolute_time on iOS) does NOT advance during device deep sleep,
+ * so a phone that slept for most of a 1-2h countdown shows wallElapsed
+ * ≫ monoElapsed even with no tampering. Pure JS cannot distinguish sleep
+ * from a forward clock jump; a proper fix requires a native module
+ * exposing a sleep-aware monotonic clock (`SystemClock.elapsedRealtime`
+ * on Android, `mach_continuous_time` on iOS).
+ *
+ * The `unlock_wall_start` / `unlock_mono_start` columns and the
+ * `verifiedInSession` tracking remain — they still drive the backward-
+ * relock defense in layer 2.
  */
 
 const MAX_WALL_KEY = 'lockbox_time_max_wall';
@@ -90,38 +91,6 @@ export async function checkWallRollback(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * Adaptive forward-jump tolerance. Base 60 s, plus 10 % of the expected
- * countdown duration, capped at 5 minutes. Longer countdowns are more
- * likely to encounter legitimate mono/wall drift (doze, GC, suspension)
- * so we widen the band proportionally.
- */
-export function getForwardTolerance(durationSeconds: number): number {
-  const safe = Math.max(0, durationSeconds);
-  return Math.min(60_000 + safe * 100, 300_000);
-}
-
-/**
- * Returns true when the wall clock has advanced significantly faster than
- * `perf.now()` since the anchor was captured — strong evidence of a
- * forward clock jump. Returns null when the check cannot be performed
- * (missing anchor, or anchor from a previous JS process); callers should
- * treat that as "unverified" and rely on layer 2.
- */
-export function isWallMonoTampered(
-  lockboxId: number,
-  wallStart: number | null,
-  monoStart: number | null,
-  toleranceMs: number
-): boolean | null {
-  if (wallStart == null || monoStart == null) return null;
-  if (!verifiedInSession.has(lockboxId)) return null;
-
-  const wallElapsed = Date.now() - wallStart;
-  const monoElapsed = readMonoNow() - monoStart;
-  return wallElapsed - monoElapsed > toleranceMs;
 }
 
 /**
