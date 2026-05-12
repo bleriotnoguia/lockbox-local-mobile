@@ -123,6 +123,17 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     }
     await database.execAsync('PRAGMA user_version = 4');
   }
+
+  if (version < 5) {
+    try {
+      await database.execAsync(
+        'ALTER TABLE lockboxes ADD COLUMN relock_mono_start REAL'
+      );
+    } catch {
+      // Column may already exist
+    }
+    await database.execAsync('PRAGMA user_version = 5');
+  }
 }
 
 export async function closeDatabase(): Promise<void> {

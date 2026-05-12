@@ -21,6 +21,7 @@ export interface Lockbox {
   tags: string | null;
   unlock_mono_start: number | null;
   unlock_wall_start: number | null;
+  relock_mono_start: number | null;
 }
 
 export interface CreateLockboxInput {

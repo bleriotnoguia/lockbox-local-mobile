@@ -32,6 +32,12 @@ import * as SecureStore from 'expo-secure-store';
 
 const MAX_WALL_KEY = 'lockbox_time_max_wall';
 const ROLLBACK_TOLERANCE_MS = 60_000;
+// A stored high-water more than this far ahead of `Date.now()` is treated
+// as poisoned (the user advanced their clock in a previous session, then
+// reverted) and reset rather than treated as evidence of a rollback. We
+// trade a narrow window of anti-rollback weakness for the much more
+// disruptive failure mode of locking the app forever.
+const STALE_FUTURE_TOLERANCE_MS = 60_000;
 
 function readMonoNow(): number {
   if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
@@ -53,7 +59,16 @@ export async function recordWallHighWater(): Promise<void> {
     const wallNow = Date.now();
     const raw = await SecureStore.getItemAsync(MAX_WALL_KEY);
     const stored = raw ? Number(raw) : null;
-    if (stored == null || !Number.isFinite(stored) || wallNow > stored) {
+    const poisoned =
+      stored != null &&
+      Number.isFinite(stored) &&
+      stored > wallNow + STALE_FUTURE_TOLERANCE_MS;
+    if (
+      stored == null ||
+      !Number.isFinite(stored) ||
+      poisoned ||
+      wallNow > stored
+    ) {
       await SecureStore.setItemAsync(MAX_WALL_KEY, String(wallNow));
     }
   } catch {
@@ -67,7 +82,11 @@ export async function checkWallRollback(): Promise<boolean> {
     if (!raw) return false;
     const stored = Number(raw);
     if (!Number.isFinite(stored)) return false;
-    return Date.now() < stored - ROLLBACK_TOLERANCE_MS;
+    const wallNow = Date.now();
+    // Stored value is implausibly in the future — treat the persisted
+    // high-water as poisoned and refuse to call this a rollback.
+    if (stored > wallNow + STALE_FUTURE_TOLERANCE_MS) return false;
+    return wallNow < stored - ROLLBACK_TOLERANCE_MS;
   } catch {
     return false;
   }
@@ -103,4 +122,21 @@ export function isWallMonoTampered(
   const wallElapsed = Date.now() - wallStart;
   const monoElapsed = readMonoNow() - monoStart;
   return wallElapsed - monoElapsed > toleranceMs;
+}
+
+/**
+ * Returns true when at least `durationMs` of monotonic time has elapsed
+ * since `monoStart`. Used by auto-relock to fire even if the wall clock
+ * was rolled back to prevent `relock_timestamp <= Date.now()` from ever
+ * becoming true. Returns false when the anchor is unverifiable in the
+ * current JS session — caller should fall back to wall-only.
+ */
+export function hasMonoElapsed(
+  lockboxId: number,
+  monoStart: number | null,
+  durationMs: number
+): boolean {
+  if (monoStart == null) return false;
+  if (!verifiedInSession.has(lockboxId)) return false;
+  return readMonoNow() - monoStart >= durationMs;
 }

@@ -3,6 +3,7 @@ import type { Lockbox, AccessLogEntry } from '../types';
 import {
   getMonoNow,
   getForwardTolerance,
+  hasMonoElapsed,
   isWallMonoTampered,
   markUnlockVerifiedInSession,
 } from '../utils/timeIntegrity';
@@ -11,7 +12,7 @@ const SELECT_LOCKBOX = `SELECT id, name, content, category, is_locked,
   unlock_delay_seconds, relock_delay_seconds, unlock_timestamp, relock_timestamp,
   created_at, updated_at, reflection_enabled, reflection_message, reflection_checklist,
   penalty_enabled, penalty_seconds, panic_code_hash, panic_code_used, scheduled_unlock_at,
-  tags, unlock_mono_start, unlock_wall_start
+  tags, unlock_mono_start, unlock_wall_start, relock_mono_start
   FROM lockboxes`;
 
 interface RawLockboxRow {
@@ -37,6 +38,7 @@ interface RawLockboxRow {
   tags: string | null;
   unlock_mono_start: number | null;
   unlock_wall_start: number | null;
+  relock_mono_start: number | null;
 }
 
 function rowToLockbox(row: RawLockboxRow): Lockbox {
@@ -63,6 +65,7 @@ function rowToLockbox(row: RawLockboxRow): Lockbox {
     tags: row.tags ?? null,
     unlock_mono_start: row.unlock_mono_start ?? null,
     unlock_wall_start: row.unlock_wall_start ?? null,
+    relock_mono_start: row.relock_mono_start ?? null,
   };
 }
 
@@ -329,7 +332,7 @@ export async function relockLockbox(id: number): Promise<Lockbox> {
   await db.runAsync(
     `UPDATE lockboxes SET is_locked = 1, unlock_timestamp = NULL,
       unlock_mono_start = NULL, unlock_wall_start = NULL,
-      relock_timestamp = NULL, updated_at = ?
+      relock_timestamp = NULL, relock_mono_start = NULL, updated_at = ?
      WHERE id = ?`,
     [now, id]
   );
@@ -353,13 +356,16 @@ export async function usePanicCode(
   const now = Date.now();
   const relockTimestamp = now + current.relock_delay_seconds * 1000;
 
+  const relockMonoStart = getMonoNow();
   await db.runAsync(
     `UPDATE lockboxes SET is_locked = 0, unlock_timestamp = NULL,
       unlock_mono_start = NULL, unlock_wall_start = NULL,
-      scheduled_unlock_at = NULL, relock_timestamp = ?, panic_code_used = 1, updated_at = ?
+      scheduled_unlock_at = NULL, relock_timestamp = ?, relock_mono_start = ?,
+      panic_code_used = 1, updated_at = ?
      WHERE id = ?`,
-    [relockTimestamp, now, id]
+    [relockTimestamp, relockMonoStart, now, id]
   );
+  markUnlockVerifiedInSession(id);
 
   await logAccessEvent(id, 'panic_used');
   return getLockbox(id);
@@ -431,6 +437,7 @@ async function cancelWithTamper(
      SET is_locked = 1, unlock_timestamp = NULL,
          unlock_mono_start = NULL, unlock_wall_start = NULL,
          scheduled_unlock_at = NULL, relock_timestamp = NULL,
+         relock_mono_start = NULL,
          unlock_delay_seconds = ?, updated_at = ?
      WHERE id = ?`,
     [newDelay, now, row.id]
@@ -477,13 +484,16 @@ export async function checkAndUpdateStates(): Promise<CheckAndUpdateResult> {
       continue;
     }
     const relockTs = now + row.relock_delay_seconds * 1000;
+    const relockMonoStart = getMonoNow();
     await db.runAsync(
       `UPDATE lockboxes
-       SET is_locked = 0, relock_timestamp = ?, unlock_timestamp = NULL,
-           unlock_mono_start = NULL, unlock_wall_start = NULL, updated_at = ?
+       SET is_locked = 0, relock_timestamp = ?, relock_mono_start = ?,
+           unlock_timestamp = NULL, unlock_mono_start = NULL,
+           unlock_wall_start = NULL, updated_at = ?
        WHERE id = ?`,
-      [relockTs, now, row.id]
+      [relockTs, relockMonoStart, now, row.id]
     );
+    markUnlockVerifiedInSession(row.id);
     await logAccessEvent(row.id, 'unlock_completed');
   }
 
@@ -524,23 +534,55 @@ export async function checkAndUpdateStates(): Promise<CheckAndUpdateResult> {
       continue;
     }
     const relockTs = now + row.relock_delay_seconds * 1000;
+    const relockMonoStart = getMonoNow();
     await db.runAsync(
       `UPDATE lockboxes
-       SET is_locked = 0, relock_timestamp = ?, scheduled_unlock_at = NULL,
-           unlock_mono_start = NULL, unlock_wall_start = NULL, updated_at = ?
+       SET is_locked = 0, relock_timestamp = ?, relock_mono_start = ?,
+           scheduled_unlock_at = NULL, unlock_mono_start = NULL,
+           unlock_wall_start = NULL, updated_at = ?
        WHERE id = ?`,
-      [relockTs, now, row.id]
+      [relockTs, relockMonoStart, now, row.id]
     );
+    markUnlockVerifiedInSession(row.id);
     await logAccessEvent(row.id, 'unlock_completed');
   }
 
-  // 3. Auto-relock
-  await db.runAsync(
-    `UPDATE lockboxes
-     SET is_locked = 1, relock_timestamp = NULL, updated_at = ?
-     WHERE is_locked = 0 AND relock_timestamp IS NOT NULL AND relock_timestamp <= ?`,
-    [now, now]
+  // 3. Auto-relock. Fire on wall expiry OR on enough monotonic elapsed
+  //    since unlock completion — the mono branch defends against a
+  //    backward clock change designed to keep the lockbox open forever.
+  const relockCandidates = await db.getAllAsync<{
+    id: number;
+    relock_timestamp: number;
+    relock_delay_seconds: number;
+    relock_mono_start: number | null;
+  }>(
+    `SELECT id, relock_timestamp, relock_delay_seconds, relock_mono_start
+     FROM lockboxes
+     WHERE is_locked = 0 AND relock_timestamp IS NOT NULL`
   );
+  for (const row of relockCandidates) {
+    const wallDue = row.relock_timestamp <= now;
+    const monoDue = hasMonoElapsed(
+      row.id,
+      row.relock_mono_start,
+      row.relock_delay_seconds * 1000
+    );
+    if (!wallDue && !monoDue) continue;
+    // Mono fired well before wall would have → backward clock jump.
+    const rollbackDetected =
+      monoDue && !wallDue && row.relock_timestamp - now > 60_000;
+    await db.runAsync(
+      `UPDATE lockboxes
+       SET is_locked = 1, relock_timestamp = NULL, relock_mono_start = NULL,
+           updated_at = ?
+       WHERE id = ?`,
+      [now, row.id]
+    );
+    if (rollbackDetected) {
+      tamperedIds.push(row.id);
+      await logAccessEvent(row.id, 'tamper_detected');
+    }
+  }
 
   const lockboxes = await getAllLockboxes();
   return { lockboxes, tamperedIds };
@@ -588,6 +630,7 @@ export async function handleTamperingDetected(): Promise<Lockbox[]> {
            unlock_wall_start = NULL,
            scheduled_unlock_at = NULL,
            relock_timestamp = NULL,
+           relock_mono_start = NULL,
            unlock_delay_seconds = ?,
            updated_at = ?
        WHERE id = ?`,
