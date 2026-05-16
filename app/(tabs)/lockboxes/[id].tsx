@@ -389,7 +389,12 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
             </View>
 
             {isDecrypting ? (
-              <ActivityIndicator size="small" color="#6366f1" />
+              <View className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 items-center">
+                <ActivityIndicator size="small" color="#6366f1" />
+                <Text className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                  {t("lockboxDetail.decrypting") || "Déchiffrement en cours..."}
+                </Text>
+              </View>
             ) : isContentVisible && decryptedContent ? (
               <View className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4">
                 <Text className="text-sm text-gray-800 dark:text-gray-200 font-mono">
@@ -574,15 +579,20 @@ function LockboxDetailContent({ lockbox }: { lockbox: Lockbox }) {
       />
 
       {/* Finalizing / Decrypting overlay */}
-      <Modal visible={isFinalizing} animationType="fade" transparent>
+      <Modal visible={isFinalizing || isDecrypting} animationType="fade" transparent>
         <View className="flex-1 bg-black/60 items-center justify-center px-8">
           <View className="bg-white dark:bg-gray-800 rounded-2xl px-6 py-6 items-center min-w-[220px]">
             <ActivityIndicator size="large" color="#6366f1" />
             <Text className="text-base font-semibold text-gray-900 dark:text-white mt-4">
-              {t("finalizing.title")}
+              {isDecrypting && !isFinalizing
+                ? t("lockboxDetail.decrypting") || "Déchiffrement en cours..."
+                : t("finalizing.title")}
             </Text>
             <Text className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-              {t("finalizing.body")}
+              {isDecrypting && !isFinalizing
+                ? t("common.cryptoWait") ||
+                  "Le déchiffrement peut prendre quelques secondes. Veuillez patienter."
+                : t("finalizing.body")}
             </Text>
           </View>
         </View>

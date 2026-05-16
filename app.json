@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lockbox Local",
     "slug": "lockbox-local",
-    "version": "1.5.3",
+    "version": "1.5.7",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -28,7 +28,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.bleriotnoguia.lockboxlocal",
-      "versionCode": 6,
+      "versionCode": 7,
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"

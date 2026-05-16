@@ -15,7 +15,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore, useThemeStore, type ThemeMode } from '../src/store';
+import {
+  useAuthStore,
+  useThemeStore,
+  useNotificationSettingsStore,
+  type ThemeMode,
+} from '../src/store';
 import { useTranslation, useLocaleStore, type Locale } from '../src/i18n';
 import { useExportImport } from '../src/hooks';
 
@@ -28,6 +33,10 @@ export default function SettingsScreen() {
   const { theme, setTheme } = useThemeStore();
   const { locale, setLocale } = useLocaleStore();
   const { exportLockboxes, importLockboxes } = useExportImport();
+  const notifSoundEnabled = useNotificationSettingsStore((s) => s.soundEnabled);
+  const setNotifSoundEnabled = useNotificationSettingsStore(
+    (s) => s.setSoundEnabled
+  );
 
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -215,6 +224,26 @@ export default function SettingsScreen() {
             </View>
           </>
         )}
+
+        {/* Notifications */}
+        <Text className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+          {t('settings.notifications')}
+        </Text>
+        <View className="bg-white dark:bg-gray-800 rounded-2xl p-4 flex-row items-center justify-between mb-6">
+          <View className="flex-1 mr-3">
+            <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t('settings.notificationSound')}
+            </Text>
+            <Text className="text-xs text-gray-500 mt-0.5">
+              {t('settings.notificationSoundHint')}
+            </Text>
+          </View>
+          <Switch
+            value={notifSoundEnabled}
+            onValueChange={setNotifSoundEnabled}
+            trackColor={{ true: '#6366f1' }}
+          />
+        </View>
 
         {/* Import/Export */}
         <Text className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">

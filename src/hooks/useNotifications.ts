@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import Constants from 'expo-constants';
 import type { Lockbox } from '../types';
 import { getLockboxStatus } from './useLockboxStatus';
+import { useNotificationSettingsStore } from '../store/notificationSettingsStore';
 
 // expo-notifications is not supported in Expo Go (removed in SDK 53).
 // Only load the module when running in a real build.
@@ -14,13 +15,17 @@ if (!isExpoGo) {
   try {
     Notifications = require('expo-notifications') as NotificationsModule;
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
+      handleNotification: async () => {
+        const soundEnabled =
+          useNotificationSettingsStore.getState().soundEnabled;
+        return {
+          shouldShowAlert: true,
+          shouldPlaySound: soundEnabled,
+          shouldSetBadge: false,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        };
+      },
     });
   } catch {
     Notifications = null;
@@ -36,9 +41,18 @@ async function requestPermissions() {
   try {
     const { Platform } = require('react-native');
     if (Platform.OS === 'android') {
+      const soundEnabled =
+        useNotificationSettingsStore.getState().soundEnabled;
+      // Two channels: one with sound, one silent. Choose at schedule time.
       await Notifications.setNotificationChannelAsync('lockbox-unlock', {
         name: 'Lockbox Unlocks',
         importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+      });
+      await Notifications.setNotificationChannelAsync('lockbox-unlock-silent', {
+        name: 'Lockbox Unlocks (silent)',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: null,
       });
     }
     const { status } = await Notifications.requestPermissionsAsync();
@@ -57,10 +71,11 @@ type ScheduledEntry = {
 export function useNotifications(lockboxes: Lockbox[]) {
   // Per-lockbox scheduled notification, indexed by lockbox.id.
   const scheduledRef = useRef<Map<number, ScheduledEntry>>(new Map());
+  const soundEnabled = useNotificationSettingsStore((s) => s.soundEnabled);
 
   useEffect(() => {
     requestPermissions();
-  }, []);
+  }, [soundEnabled]);
 
   useEffect(() => {
     if (!Notifications) return;
@@ -122,10 +137,12 @@ export function useNotifications(lockboxes: Lockbox[]) {
         content: {
           title: 'Lockbox Local',
           body: `Your lockbox "${lockboxName}" is now unlocked.`,
+          sound: soundEnabled ? 'default' : null,
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: triggerDate,
+          channelId: soundEnabled ? 'lockbox-unlock' : 'lockbox-unlock-silent',
         },
       })
         .then((identifier) => {
@@ -155,5 +172,20 @@ export function useNotifications(lockboxes: Lockbox[]) {
         scheduledRef.current.delete(id);
       }
     }
-  }, [lockboxes]);
+  }, [lockboxes, soundEnabled]);
+
+  // When sound preference changes, force-cancel existing entries so the
+  // next pass reschedules them with the new sound channel/setting.
+  const prevSoundRef = useRef(soundEnabled);
+  useEffect(() => {
+    if (prevSoundRef.current === soundEnabled) return;
+    prevSoundRef.current = soundEnabled;
+    if (!Notifications) return;
+    for (const [, entry] of scheduledRef.current) {
+      Notifications.cancelScheduledNotificationAsync(entry.identifier).catch(
+        () => {}
+      );
+    }
+    scheduledRef.current.clear();
+  }, [soundEnabled]);
 }

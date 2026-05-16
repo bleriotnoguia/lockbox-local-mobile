@@ -77,6 +77,10 @@ export const translations = {
         "For seamless cross-device transfer, both devices should use the same master password. Otherwise, enter the source password during import.",
       importing: "Importing lockboxes…",
       security: "Security",
+      notifications: "Notifications",
+      notificationSound: "Notification sound",
+      notificationSoundHint:
+        "Play a sound when a lockbox unlocks. Disable for silent notifications.",
     },
     sidebar: {
       categories: "Categories",
@@ -441,6 +445,10 @@ export const translations = {
         "Pour un transfert simplifié entre appareils, utilisez le même mot de passe maître. Sinon, entrez le mot de passe source lors de l'import.",
       importing: "Import en cours…",
       security: "Sécurité",
+      notifications: "Notifications",
+      notificationSound: "Son des notifications",
+      notificationSoundHint:
+        "Jouer un son au déverrouillage d'une lockbox. Désactiver pour des notifications silencieuses.",
     },
     sidebar: {
       categories: "Catégories",
